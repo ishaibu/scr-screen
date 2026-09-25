@@ -76,7 +76,7 @@ Both metrics assume strong electrical coupling between plants, as if all were co
 |---|---|---|
 | C1 | IBR fault contribution | Excluded from SCMVA: IBRs are left out of, or set out of service in, the short-circuit calculation. |
 | C2 | Fault type | Balanced three-phase fault. |
-| C3 | Short-circuit method (network mode) | pandapower `calc_sc`, which implements IEC 60909. **Its "max" case applies the voltage factor c = 1.1**, so results will be about 10% higher than a flat-start 1.0 pu calculation (e.g., typical ANSI or PSS/E-style runs). See Decision D2. |
+| C3 | Short-circuit method (network mode) | User-selectable. **Option A: IEC 60909** via pandapower `calc_sc`, which applies voltage factor c = 1.1 (max case) plus generator and transformer impedance correction factors. **Option B: classical flat-start**, S = V² / \|Z_th\| from the network impedance matrix, with 1.0 pu pre-fault voltage, sub-transient reactances, and no IEC correction factors (aligned with common U.S. planning practice). The report states which method was used. |
 | C4 | Units | pandapower reports short-circuit power in a column named `skss_mw`, but the quantity is apparent power (MVA). The tool relabels it as MVA in all outputs. |
 | C5 | Thresholds | User-configurable. Defaults are informational only (Section 4). |
 
@@ -90,9 +90,9 @@ Proposed defaults, which the user can override:
 
 | Band | Default rule | Basis |
 |---|---|---|
-| Low: further study recommended | SCR < 3 | NERC (2018) cites values below about 3 as typically identifying low-SCR areas, referencing CIGRE TB 370. |
-| Moderate | 3 ≤ SCR < 5 | **Placeholder. Needs a sourced basis before release, or remove this band** (Decision D4). |
-| Adequate for screening | SCR ≥ 5 | Same as above. |
+| Very weak: detailed study (e.g., EMT) likely needed | SCR < 2 | HVDC planning practice; IEEE Std 1204-1997 (verify bands in the standard) |
+| Weak: further study recommended | 2 ≤ SCR < 3 | Same; NERC (2018) notes SCR below about 3 typically indicates low-SCR areas |
+| No low-strength flag | SCR ≥ 3 | Same |
 
 The report must state that flags are screening indicators, not pass/fail criteria. ERCOT's WSCR threshold of 1.5 was specific to its Panhandle region and topology, so it must **not** be applied as a general default. The tool may reference it only as an example.
 
@@ -162,6 +162,7 @@ Every case must be **independently verified by the author (Shai)** before its te
 | T2 | WSCR, two plants | Plant 1: 1000 MVA, 200 MW. Plant 2: 600 MVA, 100 MW | (1000·200 + 600·100) / 300² = **2.889** | ☐ |
 | T2b | Contrast for T2 | Same plants, individual SCRs | 5.000 and 6.000. Shows that single-plant SCR is optimistic when plants interact. | ☐ |
 | T3 | Network mode, 2-bus radial | 138 kV source 1000 MVA (R/X 0.1); 50 km line, R = 0.05, X = 0.4 Ω/km; plant 100 MW at bus 2 | pandapower gives 509.68 MVA at bus 2 (IEC 60909 max case, c = 1.1), so SCR = 5.097. **Verify by hand: S″k = c·Un²/\|Zk\|.** | ☐ |
+| T3b | Same network as T3, classical flat-start (Option B) | Source impedance 138²/1000 = 19.044 Ω (R/X 0.1) plus the line gives \|Zk\| = 39.20 Ω, so S = 138²/39.20 = 485.86 MVA and SCR = 4.859 | ☐ |
 | T4 | CSCR, simple network | To be defined after Decision D5 | — | ☐ |
 | T5 | Input errors | Zero or negative rating, missing SCMVA | Clear error message, no crash | ☐ |
 
@@ -198,3 +199,5 @@ The T3 value was produced by running pandapower 3.5.5 during drafting. It must b
 6. ERCOT, *Panhandle System Strength Assessment PSCAD Study*, Feb 2016. Cited in reference 1.
 7. IEC 60909-0, *Short-circuit currents in three-phase a.c. systems — Calculation of currents*. Paid. Basis of pandapower's method.
 8. pandapower documentation: the short-circuit module (`pandapower.shortcircuit`). Free.
+9. IEEE Std 1204-1997, *IEEE Guide for Planning DC Links Terminating at AC Locations Having Low Short-Circuit Capacities*. Paid; source of the SCR 2/3 bands.
+10. IEEE Std 551-2006 (Violet Book), *IEEE Recommended Practice for Calculating AC Short-Circuit Currents in Industrial and Commercial Power Systems*. Paid; ANSI/IEEE short-circuit practice.
