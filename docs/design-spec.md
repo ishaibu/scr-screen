@@ -163,8 +163,10 @@ Every case must be **independently verified by the author (Shai)** before its te
 | T2b | Contrast for T2 | Same plants, individual SCRs | 5.000 and 6.000. Shows that single-plant SCR is optimistic when plants interact. | ☐ |
 | T3 | Network mode, 2-bus radial | 138 kV source 1000 MVA (R/X 0.1); 50 km line, R = 0.05, X = 0.4 Ω/km; plant 100 MW at bus 2 | pandapower gives 509.68 MVA at bus 2 (IEC 60909 max case, c = 1.1), so SCR = 5.097. **Verify by hand: S″k = c·Un²/\|Zk\|.** | ☐ |
 | T3b | Same network as T3, classical flat-start (Option B) | Source impedance 138²/1000 = 19.044 Ω (R/X 0.1) plus the line gives \|Zk\| = 39.20 Ω, so S = 138²/39.20 = 485.86 MVA and SCR = 4.859 | ☐ |
-| T4 | CSCR, simple network | To be defined after Decision D5 | — | ☐ |
-| T5 | Input errors | Zero or negative rating, missing SCMVA | Clear error message, no crash | ☐ |
+| T4 | Transformer, classical (Option B) | 138 kV source 1000 MVA (R/X 0.1) + 100 MVA transformer 138/34.5 kV, vk 10%, vkr 0.5%; fault at 34.5 kV bus | 500.15 MVA | ☐ |
+| T5 | Synchronous generator, classical (Option B) | T3b network + 100 MVA generator, X''d = 0.2 pu, at the POI | 984.30 MVA | ☐ |
+| T6 | Input errors | Zero or negative rating, missing SCMVA, missing generator or source data | Clear error message, no crash | ☐ |
+| M1 | Meshed network cross-check | 4-bus looped 138 kV network; classical result compared with pandapower's independent calculation | Match at every bus | ☐ |
 
 The T3 value was produced by running pandapower 3.5.5 during drafting. It must be confirmed by hand before the test is accepted.
 

@@ -28,3 +28,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Harmless notices from inside pandapower (not from SCR-Screen code).
+filterwarnings = [
+    "ignore::FutureWarning:pandapower.*",
+    "ignore:tap_dependency_table:DeprecationWarning",
+]
