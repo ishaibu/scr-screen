@@ -93,6 +93,3 @@ def test_bad_case_raises():
         scmva_iec(t3_network(), case="typical")
 
 
-def test_classical_not_built_yet():
-    with pytest.raises(NotImplementedError):
-        scmva(t3_network(), method="classical")

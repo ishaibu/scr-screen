@@ -1,7 +1,7 @@
 """Short-circuit MVA from a network model, and a scan of every bus.
 
-Option A (this module, now): IEC 60909 via pandapower's ``calc_sc``.
-Option B (next step): classical flat-start, 1.0 pu pre-fault voltage.
+Option A: IEC 60909 via pandapower's ``calc_sc``.
+Option B: classical flat-start, 1.0 pu pre-fault voltage (see classical.py).
 
 Inverter-based resources (IBRs) are EXCLUDED from the short-circuit
 calculation by default, as the NERC SCR definitions require. The user's
@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 import pandapower.shortcircuit as sc
 
+from .classical import scmva_classical
 from .metrics import InputError, classify, scr
 from .settings import DEFAULT_THRESHOLDS, Thresholds
 
@@ -78,12 +79,23 @@ def scmva_iec(net, buses=None, case: str = "max", exclude_ibr: bool = True) -> S
     return ShortCircuitResult(METHOD_IEC, case, exclude_ibr, values, notes)
 
 
+def scmva_flat(net, buses=None) -> ShortCircuitResult:
+    """Three-phase short-circuit MVA by the classical flat-start method.
+
+    Inverter-based resources are never sources in this method, so their
+    contribution is always excluded. The user's network is not modified.
+    """
+    bus_list = _bus_list(net, buses)
+    values, notes = scmva_classical(net, bus_list)
+    return ShortCircuitResult(METHOD_CLASSICAL, "flat", True, values, notes)
+
+
 def scmva(net, buses=None, method: str = METHOD_IEC, case: str = "max") -> ShortCircuitResult:
     """Dispatch to the chosen short-circuit method."""
     if method == METHOD_IEC:
         return scmva_iec(net, buses=buses, case=case)
     if method == METHOD_CLASSICAL:
-        raise NotImplementedError("The classical flat-start method is the next build step.")
+        return scmva_flat(net, buses=buses)
     raise InputError(f"method must be '{METHOD_IEC}' or '{METHOD_CLASSICAL}', got {method!r}.")
 
 
