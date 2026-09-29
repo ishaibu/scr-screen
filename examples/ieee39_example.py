@@ -9,7 +9,10 @@ Bus numbering: pandapower counts buses from 0, the IEEE case from 1.
 So pandapower bus 0 is IEEE bus 1, and so on (IEEE bus = pandapower bus + 1).
 
 Run from the project folder:
-    python examples/ieee39_example.py
+    python examples/ieee39_example.py          (300 MW plant)
+    python examples/ieee39_example.py 1500     (any plant size in MW)
+    python examples/ieee39_example.py --save examples/ieee39_assumed.json
+        (saves the network for use with:  scr-screen scan examples/ieee39_assumed.json ...)
 """
 
 from __future__ import annotations
@@ -80,6 +83,12 @@ if __name__ == "__main__":
     import warnings
 
     warnings.simplefilter("ignore", FutureWarning)  # harmless pandapower notice
+    if len(sys.argv) > 2 and sys.argv[1] == "--save":
+        import pandapower as pp
+
+        pp.to_json(load_ieee39_with_assumed_sc_data(), sys.argv[2])
+        print(f"Saved IEEE 39-bus network with assumed short-circuit data to {sys.argv[2]}")
+        sys.exit(0)
     mw = float(sys.argv[1]) if len(sys.argv) > 1 else PLANT_MW
     rows = compare_methods(mw)
     print(f"IEEE 39-bus scan, {mw:.0f} MW plant at each bus (ASSUMED short-circuit data)")

@@ -20,6 +20,9 @@ dependencies = [
     "pandapower>=3.5",
 ]
 
+[project.scripts]
+scr-screen = "scr_screen.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 

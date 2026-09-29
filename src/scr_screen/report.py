@@ -66,7 +66,7 @@ h1{font-size:24px;margin:0}h2{font-size:17px;margin:32px 0 12px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-td.n{text-align:right;font-variant-numeric:tabular-nums}
+th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
 .tablewrap{overflow-x:auto}
 .box{background:var(--card);border-radius:10px;padding:14px 18px;font-size:14px}
 .box ul{margin:6px 0 0;padding-left:20px}
@@ -167,8 +167,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
 
     # --- Results tables -----------------------------------------------------
     parts.append("<h2>Results</h2><div class='tablewrap'><table><thead><tr>"
-                 f"<th>Plant</th><th>POI</th><th>Group</th><th>SCMVA</th><th>Rating ({basis})</th>"
-                 "<th>SCR</th><th>Flag</th></tr></thead><tbody>")
+                 f"<th>Plant</th><th>POI</th><th>Group</th><th class='n'>SCMVA</th><th class='n'>Rating ({basis})</th>"
+                 "<th class='n'>SCR</th><th>Flag</th></tr></thead><tbody>")
     for p in plants:
         cls, label = FLAG_STYLE[p.flag]
         parts.append(f"<tr><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
@@ -178,7 +178,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     parts.append("</tbody></table></div>")
     if result.groups:
         parts.append("<div class='tablewrap' style='margin-top:14px'><table><thead><tr>"
-                     f"<th>Group</th><th>Plants</th><th>Total rating ({basis})</th><th>WSCR</th>"
+                     f"<th>Group</th><th>Plants</th><th class='n'>Total rating ({basis})</th><th class='n'>WSCR</th>"
                      "<th>Flag</th></tr></thead><tbody>")
         for g in result.groups:
             cls, label = FLAG_STYLE[g.flag]
