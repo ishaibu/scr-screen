@@ -1,0 +1,4 @@
+plant_id,poi_name,scmva,rating_mw,rating_mva,group
+PV-A,Bus 101,1000,200,210,G1
+BESS-B,Bus 102,600,100,105,G1
+Wind-C,Bus 205,485.86,100,,
