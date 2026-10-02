@@ -72,9 +72,13 @@ def test_scan_ieee39_classical(tmp_path, capsys):
                  "--report", str(tmp_path / "scan.html")])
     assert code == 0
     out = capsys.readouterr().out
-    assert "Bus 11" in out and "1.888  very weak" in out
+    # IEEE bus 12 (pandapower index 11) is the weakest bus, hand-checked in docs/verification.md
+    weakest = [line for line in out.splitlines() if line.startswith("Bus 12 ")][0]
+    assert "1.888" in weakest and "very weak" in weakest and "944.1" in weakest
     html = (tmp_path / "scan.html").read_text(encoding="utf-8")
     assert "classical flat-start" in html and "hypothetical 1500 MW plant" in html
+    assert "<svg class='netmap'" in html and "network&#x27;s own coordinates" in html
+    assert "Largest plant before a weak flag" in html
 
 
 def test_scan_ieee39_iec(capsys):

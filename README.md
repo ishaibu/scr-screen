@@ -32,7 +32,11 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Short-circuit methods | Classical flat-start (1.0 pu) and IEC 60909 (via pandapower) |
 | Bus scan | SCR at every bus of a network for a hypothetical plant size |
 | Flags | Very weak / weak / no flag, with user-configurable thresholds |
-| Outputs | Self-contained HTML report, CSV, JSON |
+| Network map | Grid drawn from bus coordinates (or an automatic layout), colored and animated by SCR flag |
+| Plant-size slider | In scan reports, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
+| Max plant size | Largest plant each location can host before a weak flag (SCMVA ÷ weak threshold) |
+| Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
+| Outputs | Self-contained HTML report (works offline), CSV, JSON |
 | Interfaces | Command line (`scr-screen`) and Python API |
 
 ## Installation
@@ -61,11 +65,13 @@ scr-screen run plants.csv --report report.html --out results.csv
 **Network mode:** calculate short-circuit MVA from a [pandapower](https://www.pandapower.org/) network saved as JSON, and scan every bus.
 
 ```bash
-scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --report scan.html
+scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --report scan.html --open
 scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --method iec60909
 ```
 
-Run `scr-screen --help` or `scr-screen run --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`).
+`--open` opens the report in your browser as soon as it is ready. In a scan report, use the **plant-size slider** to try other sizes without re-running. The map, charts, and table recalculate instantly in the browser.
+
+Run `scr-screen --help` or `scr-screen run --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`).
 
 ## Input format (direct mode)
 

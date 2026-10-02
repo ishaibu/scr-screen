@@ -98,17 +98,19 @@ def write_results_csv(result: ScreeningResult, path: str | Path) -> Path:
     """Write one row per plant and one row per group, for spreadsheets."""
     path = Path(path)
     cols = ["type", "id", "group", "poi_name", "scmva", f"rating_{result.basis.lower()}",
-            "ratio", "flag", "method_source", "tool_version", "run_utc"]
+            "ratio", "flag", f"max_{result.basis.lower()}_no_flag",
+            "method_source", "tool_version", "run_utc"]
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
         for p in result.plants:
             w.writerow(["plant (SCR)", p.plant_id, p.group or "", p.poi_name,
                         f"{p.scmva:.2f}", f"{p.rating:.2f}", f"{p.scr:.3f}", p.flag,
+                        f"{p.max_rating_no_flag:.1f}",
                         result.source, result.tool_version, result.run_utc])
         for g in result.groups:
             w.writerow(["group (WSCR)", g.group, g.group, "; ".join(g.plant_ids), "",
-                        f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag,
+                        f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag, "",
                         result.source, result.tool_version, result.run_utc])
     return path
 

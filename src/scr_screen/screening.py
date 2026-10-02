@@ -24,6 +24,7 @@ class PlantResult:
     rating: float
     scr: float
     flag: str
+    max_rating_no_flag: float  # largest plant (same basis) that would not be flagged weak
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ def screen(
             rating=p.rating(basis),
             scr=value,
             flag=classify(value, thresholds).value,
+            max_rating_no_flag=p.scmva / thresholds.weak_below,
         ))
 
     groups: dict[str, list[Plant]] = {}

@@ -3,7 +3,7 @@
 Examples:
     scr-screen template plants.csv
     scr-screen run plants.csv --report report.html --out results.csv
-    scr-screen scan network.json --plant-mw 300 --method classical --report scan.html
+    scr-screen scan network.json --plant-mw 300 --method classical --report scan.html --open
     scr-screen --version
 """
 
@@ -57,6 +57,8 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_scan(args) -> int:
+    if not args.plant_mw > 0:
+        raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
     # Imported here so 'run' and 'template' work without loading pandapower.
     import pandapower as pp
 
@@ -77,8 +79,14 @@ def _cmd_scan(args) -> int:
         warnings.simplefilter("ignore", DeprecationWarning)
         rows = scan_buses(net, plant_mw=args.plant_mw, method=args.method,
                           case=args.case, thresholds=thresholds)
-    plants = [Plant(f"Bus {r.bus}", scmva=r.scmva, rating_mw=args.plant_mw) for r in rows]
-    poi = {f"Bus {r.bus}": r.name for r in rows}
+    from .netmap import bus_label, render_network_svg
+
+    # Label buses by name (e.g. IEEE bus numbers); fall back to index if names repeat.
+    labels = {r.bus: bus_label(net, r.bus) for r in rows}
+    use_names = len(set(labels.values())) == len(labels)
+    ids = {r.bus: f"Bus {labels[r.bus] if use_names else r.bus}" for r in rows}
+    plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw) for r in rows]
+    poi = {ids[r.bus]: f"pandapower index {r.bus}" for r in rows}
     label = METHOD_LABELS[args.method]
     if args.method == "iec60909":
         label += f", case '{args.case}'"
@@ -86,10 +94,33 @@ def _cmd_scan(args) -> int:
                     source=f"network model ({path.name}), {label}", poi_names=poi)
     notes = [f"Bus scan: a hypothetical {args.plant_mw:g} MW plant was screened at each bus, "
              "one at a time. Nearby plants should also be checked together with WSCR.",
-             "Bus numbers are pandapower indices (counting from 0)."]
+             ("Bus labels are the bus names in the network file; the POI column gives the "
+              "pandapower index." if use_names else
+              "Bus labels are pandapower indices (counting from 0); bus names were not unique.")]
+    svg, map_note, interactive = None, None, None
+    if args.report:
+        svg, map_note = render_network_svg(net, {r.bus: (r.scr, r.flag) for r in rows},
+                                            scmva={r.bus: r.scmva for r in rows})
+        compare = None
+        other = "iec60909" if args.method == "classical" else "classical"
+        if not args.no_compare:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                warnings.simplefilter("ignore", DeprecationWarning)
+                other_rows = scan_buses(net, plant_mw=args.plant_mw, method=other,
+                                        case=args.case, thresholds=thresholds)
+            compare = {ids[r.bus]: r.scmva for r in other_rows}
+        interactive = {"plant_mw": args.plant_mw, "compare": compare,
+                       "primary_label": _short_label(args.method),
+                       "compare_label": _short_label(other)}
     _print_summary(result)
-    _write_outputs(result, args, notes=notes)
+    _write_outputs(result, args, notes=notes, network_svg=svg, network_note=map_note,
+                   interactive=interactive)
     return 0
+
+
+def _short_label(method: str) -> str:
+    return "Classical" if method == "classical" else "IEC 60909"
 
 
 # --- Helpers -------------------------------------------------------------------
@@ -101,10 +132,19 @@ def _thresholds(args) -> Thresholds:
         raise InputError(str(err)) from None
 
 
-def _write_outputs(result: ScreeningResult, args, notes: list[str]) -> None:
+def _write_outputs(result: ScreeningResult, args, notes: list[str],
+                   network_svg: str | None = None, network_note: str | None = None,
+                   interactive: dict | None = None) -> None:
     if args.report:
-        path = write_html_report(result, args.report, title=args.title, notes=notes)
+        path = write_html_report(result, args.report, title=args.title, notes=notes,
+                                 network_svg=network_svg, network_note=network_note,
+                                 interactive=interactive)
         print(f"Report written:  {path}")
+        if args.open:
+            import webbrowser
+
+            webbrowser.open(Path(path).resolve().as_uri())
+            print("Opened the report in your browser.")
     if args.out:
         out = Path(args.out)
         if out.suffix.lower() == ".json":
@@ -118,9 +158,10 @@ def _write_outputs(result: ScreeningResult, args, notes: list[str]) -> None:
 
 def _print_summary(result: ScreeningResult) -> None:
     print(f"SCR-Screen v{result.tool_version} | basis {result.basis} | source: {result.source}")
-    print(f"{'Plant':<20}{'SCMVA':>11}{'Rating':>10}{'SCR':>9}  Flag")
+    print(f"{'Plant':<20}{'SCMVA':>11}{'Rating':>10}{'SCR':>9}  {'Flag':<10}{'Max, no flag':>13}")
     for p in sorted(result.plants, key=lambda p: p.scr, reverse=True):
-        print(f"{p.plant_id[:19]:<20}{p.scmva:>11.1f}{p.rating:>10.1f}{p.scr:>9.3f}  {p.flag}")
+        print(f"{p.plant_id[:19]:<20}{p.scmva:>11.1f}{p.rating:>10.1f}{p.scr:>9.3f}  "
+              f"{p.flag:<10}{p.max_rating_no_flag:>13.1f}")
     for g in result.groups:
         print(f"Group {g.group}: WSCR {g.wscr:.3f} ({g.flag}); plants {', '.join(g.plant_ids)}")
     flagged = sum(p.flag != "none" for p in result.plants) + sum(g.flag != "none" for g in result.groups)
@@ -147,6 +188,8 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="flag 'very weak' below this value (default 2.0)")
         p.add_argument("--weak", type=float, default=3.0, metavar="X",
                        help="flag 'weak' below this value (default 3.0)")
+        p.add_argument("--open", action="store_true",
+                       help="open the HTML report in your browser when it is ready")
 
     r = sub.add_parser("run", help="screen plants listed in a CSV file (direct mode)")
     r.add_argument("csv", help="input CSV (see 'scr-screen template')")
@@ -162,6 +205,8 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="short-circuit method (default classical)")
     s.add_argument("--case", choices=["max", "min"], default="max",
                    help="IEC 60909 case (default max; ignored for classical)")
+    s.add_argument("--no-compare", action="store_true",
+                   help="skip the second method (the report's method comparison chart)")
     common(s)
     s.set_defaults(func=_cmd_scan)
     return parser
