@@ -17,7 +17,6 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 
 - Single-plant **SCR** at a POI.
 - Multi-plant **WSCR** (weighted SCR), in MW and MVA variants.
-- Multi-plant **CSCR** (composite SCR).
 - Two input modes:
   - **Direct mode:** the user supplies short-circuit MVA values.
   - **Network mode:** SCR-Screen computes short-circuit MVA from a pandapower network model.
@@ -27,7 +26,7 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 ### 1.2 Out of scope (v0.1)
 
 - **Not a substitute for interconnection studies.** SCR-based metrics are screening indicators only. Weak-grid behavior is system- and equipment-specific and may require positive-sequence and EMT studies.
-- SCRIF, the SCR with interaction factors (planned for v0.2).
+- CSCR (composite SCR) and SCRIF (SCR with interaction factors), planned for v0.2.
 - Automatic contingency (N-1) scanning (planned for v0.2). In v0.1, users can study a contingency manually by editing the network.
 - Reading proprietary study-software formats.
 - Any use of non-public data.
@@ -57,7 +56,7 @@ $$WSCR = \frac{\sum_{i=1}^{N} SCMVA_i \cdot P_{RMW,i}}{\left(\sum_{i=1}^{N} P_{R
 - **N**: number of plants assumed to be **fully interacting**.
 - **WSCR-MVA:** identical, with MVA ratings replacing MW. NERC notes the two variants may need different thresholds.
 
-### 2.3 Composite Short-Circuit Ratio (CSCR)
+### 2.3 Composite Short-Circuit Ratio (CSCR) — deferred to v0.2 (Decision D5)
 
 $$CSCR = \frac{CSCMVA}{\sum P_{rated}}$$
 
@@ -138,17 +137,27 @@ A CSV or Python list with one row per plant:
 ```
 scr-screen/
 ├── src/scr_screen/
-│   ├── metrics.py     # pure functions: scr(), wscr(), cscr() — no pandapower dependency
-│   ├── network.py     # pandapower short-circuit wrapper (IBR exclusion, c-factor handling)
-│   ├── io.py          # CSV/JSON input and output
-│   ├── report.py      # HTML report
-│   └── cli.py         # command-line entry point
-├── tests/             # pytest; hand-calculated cases
-├── examples/          # notebooks and sample inputs (public data only)
-└── docs/              # this spec, formula notes, references
+│   ├── metrics.py     # core math: scr(), wscr(), classify(); Plant record — no pandapower dependency
+│   ├── settings.py    # flag thresholds (user-configurable)
+│   ├── screening.py   # engine: SCR per plant, WSCR per group, with metadata
+│   ├── network.py     # short-circuit MVA from a network: IEC 60909 (via pandapower) and bus scan
+│   ├── classical.py   # classical flat-start method: Y-bus / Z-bus, 1.0 pu, no c-factor
+│   ├── io.py          # CSV input; CSV/JSON results; input template
+│   ├── report.py      # self-contained HTML report
+│   ├── cli.py         # command-line tool: scr-screen template | run | scan
+│   └── __main__.py    # allows: python -m scr_screen
+├── tests/             # pytest; hand-calculated cases, examples, and the walkthrough notebook
+├── examples/          # IEEE 39-bus example and network (assumed data), input template, walkthrough notebook
+├── docs/              # this spec and the verification record
+└── .github/workflows/ # automated tests on every push (Python 3.10 and 3.13)
 ```
 
-`metrics.py` stays independent of pandapower, so the math can be tested and verified by hand in isolation.
+Design rules:
+
+- `metrics.py` stays independent of pandapower, so the math can be tested and verified by hand in isolation.
+- `screening.py` is shared by the Python API, the HTML report, and the command line, so all three always produce identical numbers.
+- Each short-circuit method is a separate module behind one switch (`network.scmva(method=...)`), so methods can be added or changed without touching the metrics.
+- Unsupported network elements stop the calculation with a clear error rather than being silently ignored.
 
 ---
 
