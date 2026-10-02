@@ -11,6 +11,7 @@ network is never modified: all work is done on a copy.
 from __future__ import annotations
 
 import copy
+import numbers
 from dataclasses import dataclass, field
 
 import pandapower.shortcircuit as sc
@@ -148,7 +149,8 @@ def _bus_list(net, buses) -> list[int]:
     """Normalize the bus argument and check every bus exists and is in service."""
     if buses is None:
         return [int(b) for b in net.bus.index[net.bus["in_service"]]]
-    if isinstance(buses, (int,)) and not isinstance(buses, bool):
+    # numbers.Integral also covers numpy integers, which pandapower returns.
+    if isinstance(buses, numbers.Integral) and not isinstance(buses, bool):
         buses = [buses]
     bus_list = [int(b) for b in buses]
     missing = [b for b in bus_list if b not in net.bus.index]

@@ -93,3 +93,11 @@ def test_bad_case_raises():
         scmva_iec(t3_network(), case="typical")
 
 
+
+
+def test_bus_given_as_pandapower_index_type():
+    # pandapower.create_bus returns numpy.int64, not a plain int.
+    net = t3_network()
+    poi = net.bus.index[1]
+    assert type(poi).__name__ != "int"
+    assert scmva_iec(net, buses=poi).scmva[1] == pytest.approx(509.68, abs=0.01)
