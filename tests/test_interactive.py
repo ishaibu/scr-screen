@@ -105,3 +105,15 @@ def test_whatif_panel_cost_inputs_and_editable_cells(tmp_path):
     assert "class='e-dist'" in html and "value='4'" in html and "class='e-poi'" in html
     assert "id='in-gtc' type='number' min='0' step='any' value=''" in html  # not entered -> blank
     assert '"follow": true' in html   # target SCR follows the weak threshold unless set
+
+
+def test_large_inputs_shown_as_plain_digits(tmp_path):
+    sites = tmp_path / "sites.csv"
+    sites.write_text("bus,distance_mi,poi_cost_usd\n12,4,15000000\n16,35,20000000\n")
+    out = tmp_path / "r.html"
+    main(["scan", str(EXAMPLES / "ieee39_assumed.json"), "--plant-mw", "1500", "--report", str(out),
+          "--site-costs", str(sites), "--condenser-cost-per-mva", "100000",
+          "--gen-tie-cost-per-mile", "2000000"])
+    html = out.read_text(encoding="utf-8")
+    assert "value='2000000'" in html and "value='20000000'" in html and "value='15000000'" in html
+    assert "e+0" not in html.split("<script")[0]   # no scientific notation anywhere in the page

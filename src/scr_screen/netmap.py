@@ -96,7 +96,7 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
         data = (f" data-bus='{b}' data-x='{x:.1f}' data-y='{y:.1f}' data-label='{label}'"
                 f" data-src='{1 if src else 0}'")
         if b in scmva:
-            data += f" data-scmva='{scmva[b]:.6g}'"
+            data += f" data-scmva='{scmva[b]:.10g}'"
         halo = (f"<circle cx='{x:.1f}' cy='{y:.1f}' r='9' class='halo {cls}'/>" if b in highlight else "")
         if src:
             s_ = 15 if big else 12

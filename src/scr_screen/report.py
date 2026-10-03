@@ -117,6 +117,7 @@ animation:pop .45s ease-out both;transition:fill .3s}
 .cost .mini span{height:100%;transition:width .45s ease}
 .seg-c{background:var(--wk)}.seg-g{background:var(--accent)}.seg-p{background:var(--muted)}
 .cost .inc{color:var(--muted);font-size:12px}
+.cost td:nth-child(2){white-space:nowrap}
 .inputs{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin-bottom:10px}
 .inputs b{color:var(--fg);font-weight:600}
 @keyframes fade{from{opacity:0}}
@@ -321,7 +322,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     mw0 = float(interactive["plant_mw"]) if live else None
     TV = f"<span class='th-vw'>{vw:g}</span>" if live else f"{vw:g}"  # thresholds that update live
     TW = f"<span class='th-wk'>{wk:g}</span>" if live else f"{wk:g}"
-    dscm = (lambda p: f" data-scmva='{p.scmva:.6g}'") if live else (lambda p: "")
+    dscm = (lambda p: f" data-scmva='{p.scmva:.10g}'") if live else (lambda p: "")
 
     parts = [
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>",
@@ -357,14 +358,14 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         ci = cost["inputs"] if cost else None
 
         def fld(fid, label, value, unit, mn="0", note=""):
-            v = "" if value is None else f"{value:g}"
+            v = _plain(value)
             return (f"<label class='fld' for='{fid}'>{label}<input id='{fid}' type='number' min='{mn}' "
                     f"step='any' value='{v}'{note}>{unit}</label>")
 
         panel = [
             "<div class='slider whatif'><div class='wrow'><label for='mw-range'>Plant size</label>",
-            f"<input id='mw-range' type='range' min='{step}' max='{top:g}' step='{step}' value='{mw0:g}'>",
-            f"<input id='mw-num' type='number' min='1' step='any' value='{mw0:g}' aria-label='Plant size in MW'> MW",
+            f"<input id='mw-range' type='range' min='{step}' max='{_plain(top)}' step='{step}' value='{_plain(mw0)}'>",
+            f"<input id='mw-num' type='number' min='1' step='any' value='{_plain(mw0)}' aria-label='Plant size in MW'> MW",
             "<button id='mw-reset' type='button'>Reset all</button>",
             "<span id='mw-msg' class='msg' role='status' aria-live='polite'></span></div>",
             "<div class='wrow'><div class='wh'>Flag thresholds (SCR)</div>",
@@ -573,8 +574,8 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
                         f"style='left:{th / scale * 100:.2f}%'>"
                         f"{f'<span>{th:g}</span>' if i == 0 else ''}</div>" for kind, th in (("vw", vw), ("wk", wk)))
         out.append(
-            f"<div class='row{' diff' if ca != cb else ''}' data-scmva='{p.scmva:.6g}' "
-            f"data-scmva2='{compare[p.plant_id]:.6g}'>"
+            f"<div class='row{' diff' if ca != cb else ''}' data-scmva='{p.scmva:.10g}' "
+            f"data-scmva2='{compare[p.plant_id]:.10g}'>"
             f"<div class='name' title='{escape(p.plant_id)}'>{escape(p.plant_id)}</div>"
             f"<div class='track'>{ticks}<div class='seg' style='left:{min(pa, pb):.2f}%;width:{abs(pb - pa):.2f}%'></div>"
             f"<div class='dot a {ca}' style='left:{pa:.2f}%' title='{a_lab}'></div>"
@@ -587,6 +588,16 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
             f"(<strong id='cmp-diff'>{diff}</strong> bus(es) at this plant size). Values shown as "
             f"{a_lab} / {b_lab}.</div><div class='chart cmp'>")
     return head + "".join(out) + "</div>"
+
+
+def _plain(v) -> str:
+    """Number as plain digits for input boxes and data attributes (never 2e+06)."""
+    if v is None:
+        return ""
+    v = float(v)
+    if v == int(v) and abs(v) < 1e15:
+        return str(int(v))
+    return f"{v:.10f}".rstrip("0").rstrip(".")
 
 
 def _money(v):
@@ -644,8 +655,8 @@ def _cost_section(cost, live) -> str:
     for i, r in enumerate(rows, start=1):
         w = (lambda v: f"{(v / mx * 100) if (v and mx) else 0:.2f}%")
         inc = "" if r.complete else " <span class='inc'>(incomplete)</span>"
-        dist = "" if r.gen_tie_mi is None else f"{r.gen_tie_mi:.6g}"
-        poi = "" if r.poi_cost is None else f"{r.poi_cost:.6g}"
+        dist = _plain(r.gen_tie_mi)
+        poi = _plain(r.poi_cost)
         bus = escape(r.bus_id)
         if live:
             dist_cell = (f"<input class='e-dist' type='number' min='0' step='any' value='{dist}' "
@@ -656,7 +667,7 @@ def _cost_section(cost, live) -> str:
             dist_cell = "—" if r.gen_tie_mi is None else f"{r.gen_tie_mi:g}"
             poi_cell = _money(r.poi_cost)
         out.append(
-            f"<tr data-scmva='{r.scmva:.6g}' data-dist='{dist}' data-poi='{poi}' "
+            f"<tr data-scmva='{r.scmva:.10g}' data-dist='{dist}' data-poi='{poi}' "
             f"data-dist0='{dist}' data-poi0='{poi}'>"
             f"<td class='n k-rank'>{i}</td><td>{bus}</td>"
             f"<td class='n k-scr'>{r.scr:.2f}</td><td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"

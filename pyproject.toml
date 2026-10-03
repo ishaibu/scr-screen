@@ -47,6 +47,9 @@ notebook = ["ipykernel"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+scr_screen = ["data/*.json", "data/*.csv"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Harmless notices from inside pandapower (not from SCR-Screen code).

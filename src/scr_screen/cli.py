@@ -1,6 +1,7 @@
 """Command-line tool: ``scr-screen``.
 
 Examples:
+    scr-screen example                      (copies example files into ./scr-screen-example)
     scr-screen template plants.csv
     scr-screen run plants.csv --report report.html --out results.csv
     scr-screen check mynetwork.xlsx
@@ -46,6 +47,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # --- Commands ----------------------------------------------------------------
+
+def _cmd_example(args) -> int:
+    from .examples import copy_examples
+
+    files = copy_examples(args.folder, overwrite=args.overwrite)
+    print(f"Example files written to {Path(args.folder).resolve()}:")
+    for f in files:
+        print(f"  {f.name}")
+    print("Next:  cd " + str(args.folder) + "   then follow README.txt, e.g.")
+    print("       scr-screen scan ieee39_assumed.json --plant-mw 1500 --report scan.html --open")
+    return 0
+
 
 def _cmd_template(args) -> int:
     path = write_template_csv(args.path)
@@ -275,6 +288,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"scr-screen {__version__}")
     sub = parser.add_subparsers(title="commands")
+
+    e = sub.add_parser("example", help="copy example files (IEEE 39-bus network, site costs, plants) to a folder")
+    e.add_argument("folder", nargs="?", default="scr-screen-example",
+                   help="destination folder (default: scr-screen-example)")
+    e.add_argument("--overwrite", action="store_true", help="replace existing files")
+    e.set_defaults(func=_cmd_example)
 
     t = sub.add_parser("template", help="write an input CSV template")
     t.add_argument("path", help="where to save the template, e.g. plants.csv")

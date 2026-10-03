@@ -33,7 +33,8 @@ First public release.
 - Self-contained HTML report (works offline; print to PDF from any browser): summary cards, network map from bus coordinates or an automatic layout, SCR chart, method comparison (classical vs IEC 60909), largest-plant chart, cost ranking, results tables, method notes, and disclaimer.
 - Interactive what-if inputs in scan reports: plant size slider, flag thresholds, target SCR, condenser parameters and costs, and per-bus gen-tie distance and POI cost, all recalculated instantly in the browser.
 - Animations that respect the reader's reduced-motion setting and are disabled when printing.
-- Command line: `scr-screen template | run | scan | check | convert | sites-template`, with `--open` to show the report when ready.
+- Command line: `scr-screen example | template | run | scan | check | convert | sites-template`, with `--open` to show the report when ready.
+- `scr-screen example` copies bundled example files (IEEE 39-bus network with assumed data, illustrative site costs, plant template) so a scan can be tried right after installing.
 - CSV and JSON results; Python API.
 
 ### Documentation and verification

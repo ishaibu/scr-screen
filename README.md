@@ -57,6 +57,14 @@ A PyPI release (`pip install scr-screen`) is planned for v0.1.0.
 
 ## Quick start (command line)
 
+**Try it in one minute** with the bundled IEEE 39-bus example:
+
+```bash
+scr-screen example                      # copies example files into ./scr-screen-example
+cd scr-screen-example
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --report scan.html --open
+```
+
 **Direct mode:** you already have short-circuit MVA values (from any study tool).
 
 ```bash
