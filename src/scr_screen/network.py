@@ -11,6 +11,7 @@ network is never modified: all work is done on a copy.
 from __future__ import annotations
 
 import copy
+import math
 import numbers
 from dataclasses import dataclass, field
 
@@ -76,7 +77,18 @@ def scmva_iec(net, buses=None, case: str = "max", exclude_ibr: bool = True) -> S
         ) from err
 
     # pandapower names this column 'skss_mw', but it is apparent power (MVA).
-    values = {int(b): float(work.res_bus_sc.at[b, "skss_mw"]) for b in bus_list}
+    values, isolated = {}, []
+    for b in bus_list:
+        v = float(work.res_bus_sc.at[b, "skss_mw"])
+        if math.isfinite(v) and v > 0:
+            values[int(b)] = v
+        elif buses is None:
+            isolated.append(int(b))
+        else:
+            raise InputError(f"Bus {b} has no valid short-circuit result (isolated from all sources?).")
+    if isolated:
+        notes.append(f"{len(isolated)} bus(es) gave no short-circuit result (no path to a source) "
+                     "and were excluded.")
     return ShortCircuitResult(METHOD_IEC, case, exclude_ibr, values, notes)
 
 
@@ -87,7 +99,7 @@ def scmva_flat(net, buses=None) -> ShortCircuitResult:
     contribution is always excluded. The user's network is not modified.
     """
     bus_list = _bus_list(net, buses)
-    values, notes = scmva_classical(net, bus_list)
+    values, notes = scmva_classical(net, bus_list, skip_isolated=buses is None)
     return ShortCircuitResult(METHOD_CLASSICAL, "flat", True, values, notes)
 
 
@@ -119,14 +131,20 @@ def scan_buses(
     method: str = METHOD_IEC,
     case: str = "max",
     thresholds: Thresholds = DEFAULT_THRESHOLDS,
+    notes: list[str] | None = None,
 ) -> list[ScanRow]:
     """SCR a plant of ``plant_mw`` would see at each bus, strongest first.
 
     This answers the siting question "which buses in this model are strong
     enough for a plant of this size?" It is single-plant SCR only; nearby
     plants should be checked together with WSCR.
+
+    If ``notes`` is a list, calculation notes (e.g. excluded isolated buses)
+    are appended to it.
     """
     result = scmva(net, buses=buses, method=method, case=case)
+    if notes is not None:
+        notes.extend(result.notes)
     rows = []
     for bus, s in result.scmva.items():
         value = scr(s, plant_mw)

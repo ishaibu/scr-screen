@@ -36,6 +36,8 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Plant-size slider | In scan reports, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
 | Max plant size | Largest plant each location can host before a weak flag (SCMVA ÷ weak threshold) |
 | Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
+| Cost screening | Ranks candidate buses by screening-level cost: synchronous condenser to fix weak grid, gen-tie line, POI substation (all costs are your inputs) |
+| Your own network | Reads pandapower JSON, Excel (.xlsx), and MATPOWER (.m/.mat); `check` lists anything missing before you scan |
 | Outputs | Self-contained HTML report (works offline), CSV, JSON |
 | Interfaces | Command line (`scr-screen`) and Python API |
 
@@ -72,6 +74,50 @@ scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --method iec60909
 `--open` opens the report in your browser as soon as it is ready. In a scan report, use the **plant-size slider** to try other sizes without re-running. The map, charts, and table recalculate instantly in the browser.
 
 Run `scr-screen --help` or `scr-screen run --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`).
+
+## Use your own network
+
+SCR-Screen works on any network, not just the IEEE 39-bus example.
+
+| File type | Extension | Notes |
+|---|---|---|
+| pandapower JSON | `.json` | Native format |
+| pandapower Excel | `.xlsx` | Edit in Excel: one sheet per element type (bus, line, trafo, gen, ext_grid, ...) |
+| MATPOWER | `.m`, `.mat` | Converted on load; MATPOWER has no short-circuit data, so add it (below) |
+
+**Short-circuit data needed:**
+- Grid sources (`ext_grid`): `s_sc_max_mva` and `rx_max`.
+- Synchronous generators (`gen`): `xdss_pu` (X''d on machine base) and `sn_mva`. IEC 60909 also needs `vn_kv`, `rdss_ohm`, and `cos_phi`.
+
+**Workflow:**
+
+```bash
+scr-screen check mynetwork.m                 # lists exactly what is missing
+scr-screen convert mynetwork.m mynetwork.xlsx  # open in Excel, fill in the empty short-circuit columns
+scr-screen check mynetwork.xlsx              # "Ready for Classical: yes"
+scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --open
+```
+
+Buses with no path to any source are skipped and listed in the report. PSS/E `.raw` import is planned.
+
+## Interconnection cost screening
+
+For a plant of a given size, SCR-Screen estimates a screening-level cost of connecting at each candidate bus:
+
+- **Weak-grid mitigation:** synchronous condenser size to reach a target SCR (default: the weak threshold),
+  `condenser MVA = max(0, plant MW × target SCR − SCMVA) × (X''d + Xt)`, assuming the condenser is at the POI.
+- **Gen-tie line:** distance × your cost per mile.
+- **POI substation or switching station:** your cost per bus.
+
+```bash
+scr-screen sites-template mynetwork.xlsx sites.csv   # list of buses; fill in distance_mi, poi_cost_usd
+scr-screen scan mynetwork.xlsx --plant-mw 1500 --report scan.html --site-costs sites.csv \
+    --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000 --cost-out costs.csv
+```
+
+The numbers above and in `examples/ieee39_sites_example.csv` are **illustrative only**. SCR-Screen ships no cost data; enter your own. In the report, the cost ranking also updates with the plant-size slider, so you can see the cheapest bus change as the plant grows.
+
+> Cost screening excludes network upgrades (thermal, voltage, stability), which are often the largest interconnection cost and require power flow and interconnection-queue studies. Grid-forming inverters may mitigate weak-grid conditions at lower cost and are not costed.
 
 ## Input format (direct mode)
 
@@ -139,6 +185,7 @@ Full details: [design specification](docs/design-spec.md).
 - WSCR assumes the plants in a group are fully interacting.
 - The classical method (v0.1) ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
 - Real transmission models are often restricted (e.g. CEII in the U.S.). SCR-Screen ships only public test data; users run it on their own models.
+- Cost screening is screening-level only and excludes network upgrades; all costs are user inputs.
 
 ## Verification
 
@@ -146,7 +193,7 @@ Every formula is covered by automated tests with hand-calculated expected values
 
 ## Roadmap
 
-- **v0.2:** N-1 contingency worst case, generator retirement scenarios, interconnection-queue build-out, composite SCR (CSCR)
+- **v0.2:** PSS/E `.raw` import, N-1 contingency worst case, generator retirement scenarios, interconnection-queue build-out, composite SCR (CSCR)
 - **v0.3:** mitigation sizing (e.g. synchronous condenser MVA needed), SCR with interaction factors (SCRIF)
 
 ## Feedback and contributions

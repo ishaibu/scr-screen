@@ -3,8 +3,15 @@
 Examples:
     scr-screen template plants.csv
     scr-screen run plants.csv --report report.html --out results.csv
-    scr-screen scan network.json --plant-mw 300 --method classical --report scan.html --open
+    scr-screen check mynetwork.xlsx
+    scr-screen convert case.m mynetwork.xlsx
+    scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --open
+    scr-screen sites-template mynetwork.xlsx sites.csv
+    scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --site-costs sites.csv \
+        --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
     scr-screen --version
+
+Network files: .json (pandapower), .xlsx (pandapower Excel), .m / .mat (MATPOWER).
 """
 
 from __future__ import annotations
@@ -59,27 +66,26 @@ def _cmd_run(args) -> int:
 def _cmd_scan(args) -> int:
     if not args.plant_mw > 0:
         raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
-    # Imported here so 'run' and 'template' work without loading pandapower.
-    import pandapower as pp
-
+    from .check import check_network
+    from .loaders import load_network
+    from .netmap import bus_label, render_network_svg
     from .network import scan_buses
 
     path = Path(args.network)
-    if not path.exists():
-        raise InputError(f"Network file not found: {path}")
-    try:
-        net = pp.from_json(str(path))
-    except Exception as err:  # pandapower raises several error types
-        raise InputError(f"Could not read {path.name} as a pandapower network: {err}") from err
+    net = load_network(path)
+    rep = check_network(net)
+    if not rep.ready(args.method):
+        _print_check(rep, path.name)
+        raise InputError(f"{path.name} is not ready for the {args.method} method; see the list above.")
 
     thresholds = _thresholds(args)
+    calc_notes: list[str] = []
     with warnings.catch_warnings():
         # Harmless notices from inside pandapower; they would only confuse users.
         warnings.simplefilter("ignore", FutureWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
         rows = scan_buses(net, plant_mw=args.plant_mw, method=args.method,
-                          case=args.case, thresholds=thresholds)
-    from .netmap import bus_label, render_network_svg
+                          case=args.case, thresholds=thresholds, notes=calc_notes)
 
     # Label buses by name (e.g. IEEE bus numbers); fall back to index if names repeat.
     labels = {r.bus: bus_label(net, r.bus) for r in rows}
@@ -97,25 +103,118 @@ def _cmd_scan(args) -> int:
              ("Bus labels are the bus names in the network file; the POI column gives the "
               "pandapower index." if use_names else
               "Bus labels are pandapower indices (counting from 0); bus names were not unique.")]
+    notes += [n for n in calc_notes if "excluded" in n]
+
+    cost = _cost_screening(args, result, thresholds)
+
     svg, map_note, interactive = None, None, None
     if args.report:
         svg, map_note = render_network_svg(net, {r.bus: (r.scr, r.flag) for r in rows},
                                             scmva={r.bus: r.scmva for r in rows})
         compare = None
         other = "iec60909" if args.method == "classical" else "classical"
-        if not args.no_compare:
+        if not args.no_compare and rep.ready(other):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", DeprecationWarning)
                 other_rows = scan_buses(net, plant_mw=args.plant_mw, method=other,
                                         case=args.case, thresholds=thresholds)
-            compare = {ids[r.bus]: r.scmva for r in other_rows}
+            compare = {ids[r.bus]: r.scmva for r in other_rows if r.bus in ids}
         interactive = {"plant_mw": args.plant_mw, "compare": compare,
                        "primary_label": _short_label(args.method),
                        "compare_label": _short_label(other)}
     _print_summary(result)
+    if cost:
+        _print_costs(cost["rows"])
     _write_outputs(result, args, notes=notes, network_svg=svg, network_note=map_note,
-                   interactive=interactive)
+                   interactive=interactive, cost=cost)
+    if cost and args.cost_out:
+        from .cost import write_cost_csv
+
+        print(f"Costs written:   {write_cost_csv(cost['rows'], args.cost_out)}")
+    return 0
+
+
+def _cost_screening(args, result, thresholds):
+    """Build cost screening if any cost option was given; else None."""
+    wanted = any([args.cost, args.site_costs, args.condenser_cost_per_mva is not None,
+                  args.gen_tie_cost_per_mile is not None, args.cost_out])
+    if not wanted:
+        return None
+    from .cost import CostInputs, read_site_costs_csv, screen_costs
+
+    sites = read_site_costs_csv(args.site_costs) if args.site_costs else {}
+    known = {p.plant_id[4:] if p.plant_id.startswith("Bus ") else p.plant_id for p in result.plants}
+    unknown = [b for b in sites if b not in known]
+    if unknown:
+        raise InputError(f"Site cost file lists bus(es) not in the scan: {', '.join(unknown[:8])}. "
+                         "Use the bus labels shown in the scan (see 'scr-screen sites-template').")
+    inputs = CostInputs(
+        plant_mw=args.plant_mw,
+        target_scr=args.target_scr if args.target_scr is not None else thresholds.weak_below,
+        condenser_xdss_pu=args.condenser_xdss, condenser_xt_pu=args.condenser_xt,
+        condenser_cost_per_mva=args.condenser_cost_per_mva,
+        gen_tie_cost_per_mile=args.gen_tie_cost_per_mile, sites=sites,
+    )
+    return {"rows": screen_costs(result.plants, inputs), "inputs": inputs}
+
+
+def _print_costs(rows, n=10):
+    def money(v):
+        return "-" if v is None else f"${v / 1e6:,.1f}M"
+    print(f"\nCost screening (cheapest first, top {min(n, len(rows))}):")
+    print(f"{'#':>3} {'Bus':<12}{'SCR':>7}{'Cond. MVA':>11}{'Cond. cost':>12}{'Gen-tie':>10}{'POI':>9}{'Total':>11}")
+    for i, r in enumerate(rows[:n], start=1):
+        flag = "" if r.complete else "  (incomplete)"
+        print(f"{i:>3} {r.bus_id[:11]:<12}{r.scr:>7.2f}{r.condenser_mva:>11.1f}{money(r.condenser_cost):>12}"
+              f"{money(r.gen_tie_cost):>10}{money(r.poi_cost):>9}{money(r.total_cost):>11}{flag}")
+    print("Screening-level only: excludes network upgrades. All costs are your inputs.")
+
+
+def _cmd_check(args) -> int:
+    from .check import check_network
+    from .loaders import load_network
+
+    path = Path(args.network)
+    rep = check_network(load_network(path))
+    _print_check(rep, path.name)
+    return 0 if (rep.ready("classical") or rep.ready("iec60909")) else 2
+
+
+def _print_check(rep, name):
+    print(f"Network check: {name} ({rep.n_buses} in-service buses)")
+    icon = {"error": "ERROR  ", "warning": "WARNING", "info": "info   "}
+    scope = {"both": "", "classical": " [classical]", "iec60909": " [IEC 60909]", "report": " [report]"}
+    for f in sorted(rep.findings, key=lambda f: ["error", "warning", "info"].index(f.level)):
+        print(f"  {icon[f.level]}{scope[f.applies_to]} {f.message}")
+    for m in ("classical", "iec60909"):
+        print(f"  Ready for {_short_label(m)}: {'yes' if rep.ready(m) else 'no'}")
+
+
+def _cmd_convert(args) -> int:
+    from .loaders import load_network, save_network
+
+    net = load_network(args.source)
+    out = save_network(net, args.target)
+    print(f"Converted {Path(args.source).name} -> {out}")
+    print("Fill in any missing short-circuit columns (gen: xdss_pu, sn_mva, rdss_ohm, cos_phi, vn_kv; "
+          "ext_grid: s_sc_max_mva, rx_max), then run: scr-screen check " + str(out))
+    return 0
+
+
+def _cmd_sites_template(args) -> int:
+    from .cost import write_site_template
+    from .loaders import load_network
+    from .netmap import bus_label
+
+    net = load_network(args.network)
+    live = [int(b) for b in net.bus.index[net.bus["in_service"]]]
+    labels = [bus_label(net, b) for b in live]
+    if len(set(labels)) != len(labels):
+        labels = [str(b) for b in live]
+    path = write_site_template(labels, args.path)
+    print(f"Site cost template written: {path} ({len(labels)} buses)")
+    print("Fill in distance_mi and/or poi_cost_usd for candidate buses (leave others blank).")
     return 0
 
 
@@ -134,11 +233,11 @@ def _thresholds(args) -> Thresholds:
 
 def _write_outputs(result: ScreeningResult, args, notes: list[str],
                    network_svg: str | None = None, network_note: str | None = None,
-                   interactive: dict | None = None) -> None:
+                   interactive: dict | None = None, cost: dict | None = None) -> None:
     if args.report:
         path = write_html_report(result, args.report, title=args.title, notes=notes,
                                  network_svg=network_svg, network_note=network_note,
-                                 interactive=interactive)
+                                 interactive=interactive, cost=cost)
         print(f"Report written:  {path}")
         if args.open:
             import webbrowser
@@ -198,8 +297,23 @@ def _build_parser() -> argparse.ArgumentParser:
     common(r)
     r.set_defaults(func=_cmd_run)
 
-    s = sub.add_parser("scan", help="scan every bus of a pandapower network (network mode)")
-    s.add_argument("network", help="pandapower network saved as JSON")
+    c = sub.add_parser("check", help="check a network file is ready for scanning")
+    c.add_argument("network", help="network file (.json, .xlsx, .m, .mat)")
+    c.set_defaults(func=_cmd_check)
+
+    v = sub.add_parser("convert", help="convert a network file (e.g. MATPOWER) to .xlsx or .json")
+    v.add_argument("source", help="input network file (.json, .xlsx, .m, .mat)")
+    v.add_argument("target", help="output file (.xlsx to edit in Excel, or .json)")
+    v.set_defaults(func=_cmd_convert)
+
+    st = sub.add_parser("sites-template", help="write a site cost CSV listing every bus of a network")
+    st.add_argument("network", help="network file (.json, .xlsx, .m, .mat)")
+    st.add_argument("path", help="where to save the template, e.g. sites.csv")
+    st.set_defaults(func=_cmd_sites_template)
+
+    s = sub.add_parser("scan", help="scan every bus of a network (network mode)")
+    s.add_argument("network", help="network file: .json (pandapower), .xlsx (pandapower Excel), "
+                   ".m or .mat (MATPOWER)")
     s.add_argument("--plant-mw", type=float, required=True, help="plant size to screen at each bus")
     s.add_argument("--method", choices=["classical", "iec60909"], default="classical",
                    help="short-circuit method (default classical)")
@@ -207,6 +321,20 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="IEC 60909 case (default max; ignored for classical)")
     s.add_argument("--no-compare", action="store_true",
                    help="skip the second method (the report's method comparison chart)")
+    g = s.add_argument_group("cost screening (optional; all costs are your own inputs)")
+    g.add_argument("--cost", action="store_true", help="add cost screening (condenser sizing) to the scan")
+    g.add_argument("--site-costs", metavar="CSV", help="per-bus distance_mi and poi_cost_usd "
+                   "(see 'scr-screen sites-template')")
+    g.add_argument("--condenser-cost-per-mva", type=float, metavar="USD",
+                   help="synchronous condenser installed cost, $ per MVA")
+    g.add_argument("--gen-tie-cost-per-mile", type=float, metavar="USD", help="gen-tie line cost, $ per mile")
+    g.add_argument("--target-scr", type=float, metavar="X",
+                   help="SCR to reach with mitigation (default: the --weak threshold)")
+    g.add_argument("--condenser-xdss", type=float, default=0.20, metavar="PU",
+                   help="condenser sub-transient reactance on its own base (default 0.20, typical)")
+    g.add_argument("--condenser-xt", type=float, default=0.10, metavar="PU",
+                   help="condenser step-up transformer reactance on condenser base (default 0.10, typical)")
+    g.add_argument("--cost-out", metavar="CSV", help="write the cost table to a CSV file")
     common(s)
     s.set_defaults(func=_cmd_scan)
     return parser

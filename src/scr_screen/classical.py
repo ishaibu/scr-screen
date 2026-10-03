@@ -31,11 +31,20 @@ S_BASE_MVA = 100.0
 UNSUPPORTED_TABLES = ("trafo3w", "impedance", "xward", "ward", "dcline", "tcsc", "ssc", "vsc")
 
 
-def scmva_classical(net, bus_list: list[int]) -> tuple[dict[int, float], list[str]]:
-    """Return {bus: SCMVA} using the classical flat-start method, plus notes."""
+def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
+                    ) -> tuple[dict[int, float], list[str]]:
+    """Return {bus: SCMVA} using the classical flat-start method, plus notes.
+
+    Buses with no electrical path to any source cannot have a short-circuit
+    level. With skip_isolated=True (used by full-network scans) they are left
+    out and listed in the notes; otherwise requesting one raises InputError.
+    """
     _check_supported(net)
 
-    buses = [int(b) for b in net.bus.index[net.bus["in_service"]]]
+    live = [int(b) for b in net.bus.index[net.bus["in_service"]]]
+    reachable = connected_to_source(net, set(live))
+    isolated = [b for b in live if b not in reachable]
+    buses = [b for b in live if b in reachable]
     pos = {b: k for k, b in enumerate(buses)}
     n = len(buses)
     y = np.zeros((n, n), dtype=complex)
@@ -123,8 +132,16 @@ def scmva_classical(net, bus_list: list[int]) -> tuple[dict[int, float], list[st
             "probably isolated from every source."
         ) from None
 
+    if isolated:
+        notes.append(f"{len(isolated)} bus(es) have no path to any source and were "
+                     "excluded: " + ", ".join(str(b) for b in isolated[:20])
+                     + (" ..." if len(isolated) > 20 else "") + ".")
     values = {}
     for b in bus_list:
+        if b in isolated:
+            if skip_isolated:
+                continue
+            raise InputError(f"Bus {b} has no path to any source (isolated part of the network).")
         if b not in pos:
             raise InputError(f"Bus {b} is out of service.")
         z_th = abs(z_bus[pos[b], pos[b]])
@@ -135,6 +152,50 @@ def scmva_classical(net, bus_list: list[int]) -> tuple[dict[int, float], list[st
 
 
 # ---------------------------------------------------------------------------
+
+def connected_to_source(net, live: set[int]) -> set[int]:
+    """Buses connected (through in-service lines/transformers) to a grid source or generator."""
+    open_lines, open_trafos = _open_switches(net, allow_bus_bus=True)
+    adj: dict[int, set[int]] = {b: set() for b in live}
+
+    def link(a, b):
+        if a in adj and b in adj:
+            adj[a].add(b)
+            adj[b].add(a)
+
+    for idx, ln in net.line.iterrows():
+        if ln["in_service"] and idx not in open_lines:
+            link(int(ln["from_bus"]), int(ln["to_bus"]))
+    for idx, tr in net.trafo.iterrows():
+        if tr["in_service"] and idx not in open_trafos:
+            link(int(tr["hv_bus"]), int(tr["lv_bus"]))
+    if "trafo3w" in net and len(net.trafo3w):
+        for _, t3 in net.trafo3w.iterrows():
+            if t3["in_service"]:
+                link(int(t3["hv_bus"]), int(t3["mv_bus"]))
+                link(int(t3["hv_bus"]), int(t3["lv_bus"]))
+    if "impedance" in net and len(net.impedance):
+        for _, im in net.impedance.iterrows():
+            if im["in_service"]:
+                link(int(im["from_bus"]), int(im["to_bus"]))
+    if "switch" in net and len(net.switch):
+        for _, sw in net.switch.iterrows():
+            if sw["et"] == "b" and sw["closed"]:
+                link(int(sw["bus"]), int(sw["element"]))
+
+    stack = []
+    for table in ("ext_grid", "gen"):
+        if table in net and len(net[table]):
+            stack += [int(b) for b in net[table].loc[net[table]["in_service"], "bus"] if int(b) in adj]
+    seen = set(stack)
+    while stack:
+        b = stack.pop()
+        for n in adj[b]:
+            if n not in seen:
+                seen.add(n)
+                stack.append(n)
+    return seen
+
 
 def _add_branch(y, i, j, z_pu, label):
     if abs(z_pu) == 0:
@@ -152,13 +213,13 @@ def _add_shunt(y, i, z_pu, label):
     y[i, i] += 1.0 / z_pu
 
 
-def _open_switches(net):
+def _open_switches(net, allow_bus_bus: bool = False):
     """Lines and transformers disconnected by an open switch."""
     open_lines, open_trafos = set(), set()
     if "switch" not in net or len(net.switch) == 0:
         return open_lines, open_trafos
     for _, sw in net.switch.iterrows():
-        if sw["et"] == "b" and sw["closed"]:
+        if sw["et"] == "b" and sw["closed"] and not allow_bus_bus:
             raise InputError(
                 "Closed bus-bus switches are not supported by the classical "
                 "method in v0.1. Merge those buses in the model."

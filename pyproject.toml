@@ -18,6 +18,9 @@ classifiers = [
 ]
 dependencies = [
     "pandapower>=3.5",
+    "openpyxl",            # read Excel network files
+    "xlsxwriter",          # write Excel network files (scr-screen convert)
+    "matpowercaseframes",  # read MATPOWER .m files
 ]
 
 [project.scripts]

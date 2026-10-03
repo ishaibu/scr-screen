@@ -104,6 +104,13 @@ animation:pop .45s ease-out both;transition:fill .3s}
 .cmp .dot.b{background:var(--bg);border:3px solid var(--ok)}.cmp .dot.b.vw{border-color:var(--vw)}.cmp .dot.b.wk{border-color:var(--wk)}
 .cmp .row.diff{background:var(--hl);border-radius:6px}
 .cmp .row.diff .name{font-weight:700}
+.cost td,.cost th{padding:7px 8px}
+.cost .mini{display:flex;height:12px;min-width:120px;border-radius:3px;overflow:hidden;background:var(--card)}
+.cost .mini span{height:100%;transition:width .45s ease}
+.seg-c{background:var(--wk)}.seg-g{background:var(--accent)}.seg-p{background:var(--muted)}
+.cost .inc{color:var(--muted);font-size:12px}
+.inputs{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin-bottom:10px}
+.inputs b{color:var(--fg);font-weight:600}
 @keyframes fade{from{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}}
 @keyframes grow{from{width:0}}
@@ -133,7 +140,7 @@ function pill(el,c){if(el){el.className='pill '+c;el.textContent=NAME[c];}}
 function update(mw){
   if(!(mw>0)) return;
   qa('[data-mw-text]').forEach(function(e){e.textContent=num(mw);});
-  var all=qa('tr[data-scmva]').map(function(t){return +t.dataset.scmva;});
+  var all=qa('tr.res[data-scmva]').map(function(t){return +t.dataset.scmva;});
   var low=Math.min.apply(null,all)/mw, flagged=0;
   all.forEach(function(s){if(flag(s/mw)!=='ok') flagged++;});
   var lv=q('#card-low'); if(lv){lv.textContent=f(low,2);lv.className='v '+flag(low);}
@@ -143,7 +150,7 @@ function update(mw){
   rows.forEach(function(r){var v=+r.dataset.scmva/mw,c=flag(v),b=q('.bar',r);
     b.className='bar '+c;b.style.width=Math.max(v/mx*100,0.8)+'%';q('.val',r).textContent=f(v,2);pill(q('.pill',r),c);});
   qa('.scr-chart .tick').forEach(function(t){t.style.left=(+t.dataset.th/mx*100)+'%';});
-  qa('tr[data-scmva]').forEach(function(t){var v=+t.dataset.scmva/mw,c=flag(v);
+  qa('tr.res[data-scmva]').forEach(function(t){var v=+t.dataset.scmva/mw,c=flag(v);
     q('.c-rating',t).textContent=mw.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
     q('.c-scr',t).textContent=f(v,3);pill(q('.pill',t),c);});
   var labels=q('.netmap .labels');
@@ -174,6 +181,33 @@ function update(mw){
     if(ca!==cb){r.classList.add('diff');diff++;} else r.classList.remove('diff');});
   qa('.cmp-tick').forEach(function(t){t.style.left=(+t.dataset.th/cmx*100)+'%';});
   var dc=q('#cmp-diff'); if(dc) dc.textContent=diff;
+  if(cfg.cost) costUpdate(mw);
+}
+function money(v){if(v===null) return '—';var a=Math.abs(v);
+  if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B'; if(a>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
+  if(a>=1e3) return '$'+(v/1e3).toFixed(0)+'k'; return '$'+v.toFixed(0);}
+function costUpdate(mw){
+  var C=cfg.cost, body=q('#cost-body'); if(!body) return;
+  var rows=qa('tr',body), data=[], mx=0;
+  rows.forEach(function(t){
+    var sc=+t.dataset.scmva, need=Math.max(0,mw*C.target-sc), cm=need*C.x, ok=true;
+    var cc=cm===0?0:(C.cpm===null?null:cm*C.cpm); if(cc===null) ok=false;
+    var dist=t.dataset.dist===''?null:+t.dataset.dist;
+    var gc=dist===null?null:(C.gtc===null?null:dist*C.gtc); if(dist!==null&&gc===null) ok=false;
+    var pc=t.dataset.poi===''?null:+t.dataset.poi;
+    var parts=[cc,gc,pc].filter(function(v){return v!==null;});
+    var tot=parts.length?parts.reduce(function(a,b){return a+b;},0):null;
+    if(tot!==null) mx=Math.max(mx,tot);
+    data.push({t:t,sc:sc,need:need,cm:cm,cc:cc,gc:gc,pc:pc,tot:tot,ok:ok,scr:sc/mw});});
+  data.sort(function(a,b){if((a.tot===null)!==(b.tot===null)) return a.tot===null?1:-1;
+    return (a.tot||0)-(b.tot||0)||a.cm-b.cm||b.scr-a.scr;});
+  data.forEach(function(d,i){var t=d.t;
+    q('.k-rank',t).textContent=i+1; q('.k-scr',t).textContent=f(d.scr,2);
+    q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
+    q('.k-cc',t).textContent=money(d.cc); q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
+    var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
+    q('.seg-c',t).style.width=w(d.cc); q('.seg-g',t).style.width=w(d.gc); q('.seg-p',t).style.width=w(d.pc);
+    body.appendChild(t);});
 }
 var range=q('#mw-range'), box=q('#mw-num');
 if(range) range.addEventListener('input',function(){box.value=range.value;update(+range.value);});
@@ -191,7 +225,8 @@ if(reset) reset.addEventListener('click',function(){range.value=cfg.mw;box.value
 
 def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                 notes: list[str] | None = None, network_svg: str | None = None,
-                network_note: str | None = None, interactive: dict | None = None) -> str:
+                network_note: str | None = None, interactive: dict | None = None,
+                cost: dict | None = None) -> str:
     """Return the full HTML report as a string.
 
     Args:
@@ -201,6 +236,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
              "primary_label": str, "compare_label": str}.
             Adds the plant-size slider (V3) and, if "compare" is given, the
             method comparison chart (V4).
+        cost: optional {"rows": list[CostRow], "inputs": CostInputs} from cost.screen_costs,
+            shown as the interconnection cost screening section.
     """
     t = result.thresholds
     vw, wk = t["very_weak_below"], t["weak_below"]
@@ -329,6 +366,10 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     if cap_rows_note:
         parts.append(f"<div class='note'>{cap_rows_note}</div>")
 
+    # --- Interconnection cost screening ----------------------------------------
+    if cost:
+        parts.append(_cost_section(cost, live))
+
     # --- Groups: individual SCR vs WSCR -------------------------------------
     if result.groups:
         by_id = {p.plant_id: p for p in result.plants}
@@ -359,7 +400,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                  "<th class='n'>Max size, no flag</th></tr></thead><tbody>")
     for p in plants:
         cls, label = FLAG_STYLE[p.flag]
-        parts.append(f"<tr{dscm(p)}><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
+        parts.append(f"<tr class='res'{dscm(p)}><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
                      f"<td>{escape(p.group or '')}</td><td class='n'>{p.scmva:,.1f}</td>"
                      f"<td class='n c-rating'>{p.rating:,.1f}</td><td class='n c-scr'>{p.scr:.3f}</td>"
                      f"<td><span class='pill {cls}'>{label}</span></td>"
@@ -394,6 +435,10 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                  "Short-Circuit Modeling and System Strength (2018).</footer>")
     if live:
         cfg = {"vw": vw, "wk": wk, "mw": mw0, "maxLabels": 8}
+        if cost:
+            ci = cost["inputs"]
+            cfg["cost"] = {"target": ci.target_scr, "x": ci.condenser_xdss_pu + ci.condenser_xt_pu,
+                           "cpm": ci.condenser_cost_per_mva, "gtc": ci.gen_tie_cost_per_mile}
         parts.append(f"<script type='application/json' id='scr-cfg'>{json.dumps(cfg)}</script>")
         parts.append(f"<script>{SCRIPT}</script>")
     parts.append("</div></body></html>")
@@ -403,11 +448,11 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
 def write_html_report(result: ScreeningResult, path: str | Path,
                       title: str = "SCR-Screen report", notes: list[str] | None = None,
                       network_svg: str | None = None, network_note: str | None = None,
-                      interactive: dict | None = None) -> Path:
+                      interactive: dict | None = None, cost: dict | None = None) -> Path:
     """Write the HTML report to a file and return its path."""
     path = Path(path)
     path.write_text(render_html(result, title=title, notes=notes, network_svg=network_svg,
-                                network_note=network_note, interactive=interactive),
+                                network_note=network_note, interactive=interactive, cost=cost),
                     encoding="utf-8")
     return path
 
@@ -443,6 +488,79 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
             f"(<strong id='cmp-diff'>{diff}</strong> bus(es) at this plant size). Values shown as "
             f"{a_lab} / {b_lab}.</div><div class='chart cmp'>")
     return head + "".join(out) + "</div>"
+
+
+def _money(v):
+    if v is None:
+        return "—"
+    a = abs(v)
+    if a >= 1e9:
+        return f"${v / 1e9:.2f}B"
+    if a >= 1e6:
+        return f"${v / 1e6:.1f}M"
+    if a >= 1e3:
+        return f"${v / 1e3:.0f}k"
+    return f"${v:.0f}"
+
+
+def _cost_section(cost, live) -> str:
+    from .cost import LIMITATIONS
+
+    rows, ci = cost["rows"], cost["inputs"]
+    mx = max([r.total_cost for r in rows if r.total_cost is not None] + [0.0])
+    mw_txt = f"{ci.plant_mw:,.1f}".rstrip("0").rstrip(".")
+    mw_html = f"<span data-mw-text>{mw_txt}</span>" if live else mw_txt
+    priced = ci.condenser_cost_per_mva is not None or ci.gen_tie_cost_per_mile is not None or any(
+        s.poi_cost is not None for s in ci.sites.values())
+    out = [
+        "<h2>Interconnection cost screening</h2>",
+        "<div class='inputs'>",
+        f"<span>Plant: <b>{mw_html} MW</b></span>",
+        f"<span>Target SCR: <b>{ci.target_scr:g}</b></span>",
+        f"<span>Condenser X″d + Xt: <b>{ci.condenser_xdss_pu:g} + {ci.condenser_xt_pu:g} pu</b></span>",
+        "<span>Condenser cost: <b>" + (f"{_money(ci.condenser_cost_per_mva)}/MVA" if ci.condenser_cost_per_mva
+                                         is not None else "not entered") + "</b></span>",
+        "<span>Gen-tie cost: <b>" + (f"{_money(ci.gen_tie_cost_per_mile)}/mile" if ci.gen_tie_cost_per_mile
+                                       is not None else "not entered") + "</b></span>",
+        "<span>Buses costed: <b>" + (f"{len(rows)} candidate(s) from the site file" if ci.sites
+                                       else f"all {len(rows)} (condenser mitigation only)") + "</b></span>",
+        "</div>",
+    ]
+    if not priced:
+        out.append("<div class='note' style='margin-bottom:8px'>No cost rates entered, so only the "
+                   "condenser size needed is shown. Add --condenser-cost-per-mva, "
+                   "--gen-tie-cost-per-mile and --site-costs to rank buses by cost.</div>")
+    out.append("<div class='legend' style='margin:0 0 8px'>"
+               "<span><span class='sw seg-c'></span>Synchronous condenser</span>"
+               "<span><span class='sw seg-g'></span>Gen-tie line</span>"
+               "<span><span class='sw seg-p'></span>POI substation</span></div>")
+    out.append("<div class='tablewrap'><table class='cost'><thead><tr><th class='n'>#</th><th>Bus</th>"
+               "<th class='n'>SCR</th><th class='n'>Added SCMVA needed</th><th class='n'>Condenser MVA</th>"
+               "<th class='n'>Condenser cost</th><th class='n'>Gen-tie (mi)</th><th class='n'>Gen-tie cost</th>"
+               "<th class='n'>POI cost</th><th class='n'>Total</th><th>Breakdown</th></tr></thead>"
+               "<tbody id='cost-body'>")
+    for i, r in enumerate(rows, start=1):
+        w = (lambda v: f"{(v / mx * 100) if (v and mx) else 0:.2f}%")
+        inc = "" if r.complete else " <span class='inc'>(incomplete)</span>"
+        dist = "" if r.gen_tie_mi is None else f"{r.gen_tie_mi:.6g}"
+        poi = "" if r.poi_cost is None else f"{r.poi_cost:.6g}"
+        out.append(
+            f"<tr data-scmva='{r.scmva:.6g}' data-dist='{dist}' data-poi='{poi}'>"
+            f"<td class='n k-rank'>{i}</td><td>{escape(r.bus_id)}</td>"
+            f"<td class='n k-scr'>{r.scr:.2f}</td><td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"
+            f"<td class='n k-cmva'>{r.condenser_mva:,.1f}</td><td class='n k-cc'>{_money(r.condenser_cost)}</td>"
+            f"<td class='n'>{'—' if r.gen_tie_mi is None else f'{r.gen_tie_mi:g}'}</td>"
+            f"<td class='n'>{_money(r.gen_tie_cost)}</td><td class='n'>{_money(r.poi_cost)}</td>"
+            f"<td class='n k-tot'>{_money(r.total_cost)}{inc}</td>"
+            f"<td><div class='mini'><span class='seg-c' style='width:{w(r.condenser_cost)}'></span>"
+            f"<span class='seg-g' style='width:{w(r.gen_tie_cost)}'></span>"
+            f"<span class='seg-p' style='width:{w(r.poi_cost)}'></span></div></td></tr>"
+        )
+    out.append("</tbody></table></div>")
+    out.append("<div class='note'>Condenser MVA = max(0, plant MW × target SCR − SCMVA) × (X″d + Xt). "
+               "\"Incomplete\" means a needed part has a quantity but no price entered. "
+               + escape(LIMITATIONS) + "</div>")
+    return "".join(out)
 
 
 def _cls(v, vw, wk):
