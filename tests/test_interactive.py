@@ -83,3 +83,25 @@ def test_cli_scan_rejects_zero_or_negative_plant_size(mw, capsys):
 def test_report_has_invalid_size_message_area():
     html = render_html(scan_like(), interactive={"plant_mw": 100, "compare": None})
     assert "id='mw-msg'" in html and "Enter a plant size above 0 MW" in html
+
+
+def test_whatif_panel_threshold_inputs_and_live_labels():
+    html = render_html(scan_like(), interactive={"plant_mw": 100, "compare": None})
+    assert "id='in-wk'" in html and "id='in-vw'" in html and "Reset all" in html
+    assert "<span class='th-wk'>3</span>" in html and "data-kind='wk'" in html
+    assert "class='n c-max'" in html and "cap-row" in html
+    assert "id='in-cpm'" not in html   # cost inputs only when cost screening is on
+
+
+def test_whatif_panel_cost_inputs_and_editable_cells(tmp_path):
+    sites = tmp_path / "sites.csv"
+    sites.write_text("bus,distance_mi,poi_cost_usd\n12,4,15000000\n")
+    out = tmp_path / "r.html"
+    assert main(["scan", str(EXAMPLES / "ieee39_assumed.json"), "--plant-mw", "1500", "--report", str(out),
+                 "--site-costs", str(sites), "--condenser-cost-per-mva", "100000"]) == 0
+    html = out.read_text(encoding="utf-8")
+    for fid in ("in-target", "in-xd", "in-xt", "in-cpm", "in-gtc"):
+        assert f"id='{fid}'" in html
+    assert "class='e-dist'" in html and "value='4'" in html and "class='e-poi'" in html
+    assert "id='in-gtc' type='number' min='0' step='any' value=''" in html  # not entered -> blank
+    assert '"follow": true' in html   # target SCR follows the weak threshold unless set

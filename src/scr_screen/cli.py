@@ -156,7 +156,8 @@ def _cost_screening(args, result, thresholds):
         condenser_cost_per_mva=args.condenser_cost_per_mva,
         gen_tie_cost_per_mile=args.gen_tie_cost_per_mile, sites=sites,
     )
-    return {"rows": screen_costs(result.plants, inputs), "inputs": inputs}
+    return {"rows": screen_costs(result.plants, inputs), "inputs": inputs,
+            "target_follows_weak": args.target_scr is None}
 
 
 def _print_costs(rows, n=10):

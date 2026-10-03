@@ -60,6 +60,14 @@ h1{font-size:24px;margin:0}h2{font-size:17px;margin:32px 0 12px}
 .slider .hint{width:100%;font-size:12px;color:var(--muted)}
 .slider input.bad{border-color:var(--vw);outline:2px solid var(--vw)}
 .slider .msg{color:var(--vw);font-size:13px;font-weight:600}
+.whatif{display:block}
+.whatif .wrow{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;margin:4px 0}
+.whatif .wh{width:100%;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:10px}
+.whatif .fld{display:flex;align-items:center;gap:6px;font-size:13px}
+.whatif .fld input{width:104px}
+.whatif button{font:inherit;padding:5px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+.cost input{width:96px;padding:3px 6px;font:inherit;font-size:13px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg);text-align:right}
+.cost input.bad{border-color:var(--vw);outline:2px solid var(--vw)}
 .chart{position:relative;margin-top:6px}
 .row{display:grid;grid-template-columns:150px 1fr 120px;gap:10px;align-items:center;margin:6px 0;font-size:14px}
 .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -128,31 +136,48 @@ animation:pop .45s ease-out both;transition:fill .3s}
 SCRIPT = r"""
 (function(){
 var cfgEl=document.getElementById('scr-cfg'); if(!cfgEl) return;
-var cfg=JSON.parse(cfgEl.textContent), VW=cfg.vw, WK=cfg.wk;
+var cfg=JSON.parse(cfgEl.textContent), C0=cfg.cost||null;
+var S={};
+function init(){S.mw=cfg.mw;S.vw=cfg.vw;S.wk=cfg.wk;
+  if(C0){S.target=C0.target;S.xd=C0.xd;S.xt=C0.xt;S.cpm=C0.cpm;S.gtc=C0.gtc;S.follow=C0.follow;}}
+init();
 var NAME={vw:'Very weak',wk:'Weak',ok:'No flag'}, WORD={vw:'very weak',wk:'weak',ok:'none'};
 var SVG='http://www.w3.org/2000/svg';
-function flag(v){return v<VW?'vw':(v<WK?'wk':'ok');}
+function flag(v){return v<S.vw?'vw':(v<S.wk?'wk':'ok');}
 function q(s,r){return (r||document).querySelector(s);}
 function qa(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function f(v,d){return v.toFixed(d);}
 function num(v){return v.toLocaleString('en-US',{maximumFractionDigits:1});}
+function g(v){return String(+(+v).toPrecision(6));}
 function pill(el,c){if(el){el.className='pill '+c;el.textContent=NAME[c];}}
-function update(mw){
-  if(!(mw>0)) return;
+function money(v){if(v===null) return '\u2014';var a=Math.abs(v);
+  if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B'; if(a>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
+  if(a>=1e3) return '$'+(v/1e3).toFixed(0)+'k'; return '$'+v.toFixed(0);}
+
+function update(){
+  var mw=S.mw;
   qa('[data-mw-text]').forEach(function(e){e.textContent=num(mw);});
+  qa('.th-vw').forEach(function(e){e.textContent=g(S.vw);});
+  qa('.th-wk').forEach(function(e){e.textContent=g(S.wk);});
+  qa('.tick[data-kind]').forEach(function(t){t.dataset.th=t.dataset.kind==='vw'?S.vw:S.wk;
+    var sp=q('span',t); if(sp) sp.textContent=g(t.dataset.th);});
   var all=qa('tr.res[data-scmva]').map(function(t){return +t.dataset.scmva;});
   var low=Math.min.apply(null,all)/mw, flagged=0;
   all.forEach(function(s){if(flag(s/mw)!=='ok') flagged++;});
   var lv=q('#card-low'); if(lv){lv.textContent=f(low,2);lv.className='v '+flag(low);}
   var fv=q('#card-flag'); if(fv){fv.textContent=flagged+' of '+all.length;fv.className='v '+(flagged?'wk':'ok');}
   var rows=qa('.scr-chart .row');
-  var mx=Math.max.apply(null,rows.map(function(r){return +r.dataset.scmva/mw;}).concat([WK*1.5]));
+  var mx=Math.max.apply(null,rows.map(function(r){return +r.dataset.scmva/mw;}).concat([S.wk*1.5]));
   rows.forEach(function(r){var v=+r.dataset.scmva/mw,c=flag(v),b=q('.bar',r);
     b.className='bar '+c;b.style.width=Math.max(v/mx*100,0.8)+'%';q('.val',r).textContent=f(v,2);pill(q('.pill',r),c);});
   qa('.scr-chart .tick').forEach(function(t){t.style.left=(+t.dataset.th/mx*100)+'%';});
   qa('tr.res[data-scmva]').forEach(function(t){var v=+t.dataset.scmva/mw,c=flag(v);
     q('.c-rating',t).textContent=mw.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
-    q('.c-scr',t).textContent=f(v,3);pill(q('.pill',t),c);});
+    q('.c-scr',t).textContent=f(v,3);pill(q('.pill',t),c);
+    var cm=q('.c-max',t); if(cm) cm.textContent=(+t.dataset.scmva/S.wk).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});});
+  var caps=qa('.cap-row'), cmax=Math.max.apply(null,caps.map(function(r){return +r.dataset.scmva;}).concat([1]));
+  caps.forEach(function(r){var v=+r.dataset.scmva/S.wk;q('.bar',r).style.width=Math.max(+r.dataset.scmva/cmax*100,0.8)+'%';
+    q('.val',r).textContent=Math.round(v).toLocaleString('en-US')+' MW';});
   var labels=q('.netmap .labels');
   if(labels){while(labels.firstChild) labels.removeChild(labels.firstChild);}
   var gs=qa('.netmap g.bus[data-scmva]');
@@ -167,11 +192,11 @@ function update(mw){
     if(top){if(!h){h=document.createElementNS(SVG,'circle');h.setAttribute('cx',x);h.setAttribute('cy',y);
       h.setAttribute('r',9);g.insertBefore(h,g.firstChild);} h.setAttribute('class','halo '+c);}
     else if(h){g.removeChild(h);}
-    q('title',g).textContent='Bus '+g.dataset.label+': SCR '+f(v,2)+' ('+WORD[c]+')'+(g.dataset.src==='1'?' · generator/source bus':'');
+    q('title',g).textContent='Bus '+g.dataset.label+': SCR '+f(v,2)+' ('+WORD[c]+')'+(g.dataset.src==='1'?' \u00b7 generator/source bus':'');
     if(top&&labels){var t=document.createElementNS(SVG,'text');t.setAttribute('x',f(x+12,1));t.setAttribute('y',f(y-9,1));
-      t.setAttribute('class','lbl');t.textContent='Bus '+g.dataset.label+' · '+f(v,2);labels.appendChild(t);}
+      t.setAttribute('class','lbl');t.textContent='Bus '+g.dataset.label+' \u00b7 '+f(v,2);labels.appendChild(t);}
   });
-  var crow=qa('.cmp .row'), cmx=WK*1.5, diff=0;
+  var crow=qa('.cmp .row'), cmx=S.wk*1.5, diff=0;
   crow.forEach(function(r){cmx=Math.max(cmx,+r.dataset.scmva/mw,+r.dataset.scmva2/mw);});
   crow.forEach(function(r){var a=+r.dataset.scmva/mw,b=+r.dataset.scmva2/mw,ca=flag(a),cb=flag(b);
     var pa=a/cmx*100,pb=b/cmx*100,da=q('.dot.a',r),db=q('.dot.b',r),sg=q('.seg',r);
@@ -181,44 +206,91 @@ function update(mw){
     if(ca!==cb){r.classList.add('diff');diff++;} else r.classList.remove('diff');});
   qa('.cmp-tick').forEach(function(t){t.style.left=(+t.dataset.th/cmx*100)+'%';});
   var dc=q('#cmp-diff'); if(dc) dc.textContent=diff;
-  if(cfg.cost) costUpdate(mw);
+  if(C0) costUpdate(true);
 }
-function money(v){if(v===null) return '—';var a=Math.abs(v);
-  if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B'; if(a>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
-  if(a>=1e3) return '$'+(v/1e3).toFixed(0)+'k'; return '$'+v.toFixed(0);}
-function costUpdate(mw){
-  var C=cfg.cost, body=q('#cost-body'); if(!body) return;
-  var rows=qa('tr',body), data=[], mx=0;
-  rows.forEach(function(t){
-    var sc=+t.dataset.scmva, need=Math.max(0,mw*C.target-sc), cm=need*C.x, ok=true;
-    var cc=cm===0?0:(C.cpm===null?null:cm*C.cpm); if(cc===null) ok=false;
+
+function costUpdate(resort){
+  var body=q('#cost-body'); if(!body) return;
+  var set=function(id,t){var e=q('#'+id); if(e) e.textContent=t;};
+  set('ci-target',g(S.target)); set('ci-x',g(S.xd)+' + '+g(S.xt)+' pu');
+  set('ci-cpm',S.cpm===null?'not entered':money(S.cpm)+'/MVA');
+  set('ci-gtc',S.gtc===null?'not entered':money(S.gtc)+'/mile');
+  var x=S.xd+S.xt, data=[], mx=0;
+  qa('tr',body).forEach(function(t){
+    var sc=+t.dataset.scmva, need=Math.max(0,S.mw*S.target-sc), cm=need*x, ok=true;
+    var cc=cm===0?0:(S.cpm===null?null:cm*S.cpm); if(cc===null) ok=false;
     var dist=t.dataset.dist===''?null:+t.dataset.dist;
-    var gc=dist===null?null:(C.gtc===null?null:dist*C.gtc); if(dist!==null&&gc===null) ok=false;
+    var gc=dist===null?null:(S.gtc===null?null:dist*S.gtc); if(dist!==null&&gc===null) ok=false;
     var pc=t.dataset.poi===''?null:+t.dataset.poi;
     var parts=[cc,gc,pc].filter(function(v){return v!==null;});
     var tot=parts.length?parts.reduce(function(a,b){return a+b;},0):null;
     if(tot!==null) mx=Math.max(mx,tot);
-    data.push({t:t,sc:sc,need:need,cm:cm,cc:cc,gc:gc,pc:pc,tot:tot,ok:ok,scr:sc/mw});});
+    data.push({t:t,need:need,cm:cm,cc:cc,gc:gc,pc:pc,tot:tot,ok:ok,scr:sc/S.mw});});
+  data.forEach(function(d){var t=d.t;
+    q('.k-scr',t).textContent=f(d.scr,2); q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
+    q('.k-cc',t).textContent=money(d.cc); var gcell=q('.k-gc',t); if(gcell) gcell.textContent=money(d.gc);
+    q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
+    var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
+    q('.seg-c',t).style.width=w(d.cc); q('.seg-g',t).style.width=w(d.gc); q('.seg-p',t).style.width=w(d.pc);});
+  if(!resort) return;
   data.sort(function(a,b){if((a.tot===null)!==(b.tot===null)) return a.tot===null?1:-1;
     return (a.tot||0)-(b.tot||0)||a.cm-b.cm||b.scr-a.scr;});
-  data.forEach(function(d,i){var t=d.t;
-    q('.k-rank',t).textContent=i+1; q('.k-scr',t).textContent=f(d.scr,2);
-    q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
-    q('.k-cc',t).textContent=money(d.cc); q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
-    var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
-    q('.seg-c',t).style.width=w(d.cc); q('.seg-g',t).style.width=w(d.gc); q('.seg-p',t).style.width=w(d.pc);
-    body.appendChild(t);});
+  data.forEach(function(d,i){q('.k-rank',d.t).textContent=i+1; body.appendChild(d.t);});
 }
+
+// ---- inputs ----------------------------------------------------------------
+var msg=q('#mw-msg'), bad={};
+function showMsg(){var keys=Object.keys(bad); if(msg) msg.textContent=keys.length?bad[keys[keys.length-1]]:'';}
+function mark(el,key,text){if(text){el.classList.add('bad');bad[key]=text;}else{el.classList.remove('bad');delete bad[key];} showMsg();}
+function parse(el,allowEmpty,allowZero){var t=el.value.trim(); if(t===''&&allowEmpty) return {ok:true,v:null};
+  var v=+t; return {ok:t!==''&&isFinite(v)&&(allowZero?v>=0:v>0), v:v};}
+
 var range=q('#mw-range'), box=q('#mw-num');
-if(range) range.addEventListener('input',function(){box.value=range.value;update(+range.value);});
-var msg=q('#mw-msg'), shown=cfg.mw;
-function ok(){box.classList.remove('bad');if(msg) msg.textContent='';}
-if(range) range.addEventListener('input',function(){shown=+range.value;ok();});
-if(box) box.addEventListener('input',function(){var v=+box.value;
-  if(box.value!==''&&v>0&&isFinite(v)){shown=v;ok();if(v<=+range.max) range.value=v;update(v);}
-  else{box.classList.add('bad');if(msg) msg.textContent='Enter a plant size above 0 MW — still showing '+num(shown)+' MW.';}});
+if(range) range.addEventListener('input',function(){box.value=range.value;S.mw=+range.value;mark(box,'mw','');update();});
+if(box) box.addEventListener('input',function(){var r=parse(box,false,false);
+  if(!r.ok){mark(box,'mw','Enter a plant size above 0 MW \u2014 still showing '+num(S.mw)+' MW.');return;}
+  mark(box,'mw','');S.mw=r.v;if(r.v<=+range.max) range.value=r.v;update();});
+
+function bind(id,key,opts){var el=q('#'+id); if(!el) return;
+  el.addEventListener('input',function(){var r=parse(el,opts.empty,opts.zero), m='';
+    if(!r.ok) m=opts.msg; else if(opts.check) m=opts.check(r.v);
+    if(m){mark(el,key,m);return;}
+    mark(el,key,''); S[key]=r.v;
+    if(key==='target') S.follow=false;
+    if(key==='wk'&&C0&&S.follow){S.target=r.v;var te=q('#in-target'); if(te) te.value=r.v;}
+    update();});}
+bind('in-wk','wk',{msg:'Weak threshold must be a number above 0.',
+  check:function(v){return v>S.vw?'':'Weak threshold must be above the very-weak threshold ('+g(S.vw)+').';}});
+bind('in-vw','vw',{msg:'Very-weak threshold must be a number above 0.',
+  check:function(v){return v<S.wk?'':'Very-weak threshold must be below the weak threshold ('+g(S.wk)+').';}});
+bind('in-target','target',{msg:'Target SCR must be a number above 0.'});
+bind('in-xd','xd',{msg:'Condenser X\u2033d must be a number above 0.'});
+bind('in-xt','xt',{zero:true,msg:'Transformer Xt must be 0 or more.'});
+bind('in-cpm','cpm',{zero:true,empty:true,msg:'Condenser cost must be 0 or more (or blank).'});
+bind('in-gtc','gtc',{zero:true,empty:true,msg:'Gen-tie cost must be 0 or more (or blank).'});
+
+var body=q('#cost-body');
+if(body){
+  body.addEventListener('input',function(e){var el=e.target, t=el.closest('tr');
+    if(!el.classList||!(el.classList.contains('e-dist')||el.classList.contains('e-poi'))) return;
+    var key=(el.classList.contains('e-dist')?'dist':'poi')+'|'+q('td:nth-child(2)',t).textContent;
+    var r=parse(el,true,true);
+    if(!r.ok){mark(el,key,'Distances and POI costs must be 0 or more (or blank).');return;}
+    mark(el,key,''); t.dataset[el.classList.contains('e-dist')?'dist':'poi']=r.v===null?'':String(r.v);
+    costUpdate(false);});
+  body.addEventListener('change',function(e){if(e.target.classList&&(e.target.classList.contains('e-dist')||e.target.classList.contains('e-poi'))) costUpdate(true);});
+}
+
 var reset=q('#mw-reset');
-if(reset) reset.addEventListener('click',function(){range.value=cfg.mw;box.value=cfg.mw;shown=cfg.mw;ok();update(cfg.mw);});
+if(reset) reset.addEventListener('click',function(){init();
+  range.value=S.mw; box.value=S.mw;
+  var setv=function(id,v){var e=q('#'+id); if(e){e.value=v===null||v===undefined?'':v;e.classList.remove('bad');}};
+  setv('in-wk',S.wk); setv('in-vw',S.vw);
+  if(C0){setv('in-target',S.target);setv('in-xd',S.xd);setv('in-xt',S.xt);setv('in-cpm',S.cpm);setv('in-gtc',S.gtc);}
+  qa('#cost-body tr').forEach(function(t){t.dataset.dist=t.dataset.dist0;t.dataset.poi=t.dataset.poi0;
+    var d=q('.e-dist',t),p=q('.e-poi',t); if(d){d.value=t.dataset.dist0;d.classList.remove('bad');}
+    if(p){p.value=t.dataset.poi0;p.classList.remove('bad');}});
+  box.classList.remove('bad'); bad={}; showMsg(); update();});
 })();
 """
 
@@ -247,6 +319,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     basis = escape(result.basis)
     live = interactive is not None
     mw0 = float(interactive["plant_mw"]) if live else None
+    TV = f"<span class='th-vw'>{vw:g}</span>" if live else f"{vw:g}"  # thresholds that update live
+    TW = f"<span class='th-wk'>{wk:g}</span>" if live else f"{wk:g}"
     dscm = (lambda p: f" data-scmva='{p.scmva:.6g}'") if live else (lambda p: "")
 
     parts = [
@@ -276,21 +350,44 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     parts.append(_card("Flagged", f"{flagged} of {total}", "wk" if flagged else "ok", vid="card-flag"))
     parts.append("</div>")
 
-    # --- Plant-size slider (V3) ----------------------------------------------
+    # --- What-if inputs: plant size slider (V3), thresholds, cost rates --------
     if live:
         top = max(100.0, _nice_ceiling(3 * mw0))
         step = 10 if top <= 5000 else 50
-        parts.append(
-            "<div class='slider'><label for='mw-range'>Plant size</label>"
-            f"<input id='mw-range' type='range' min='{step}' max='{top:g}' step='{step}' value='{mw0:g}'>"
-            f"<input id='mw-num' type='number' min='1' step='any' value='{mw0:g}' aria-label='Plant size in MW'> MW"
-            "<button id='mw-reset' type='button' style='font:inherit;padding:5px 10px;border-radius:6px;"
-            "border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer'>Reset</button>"
-            "<span id='mw-msg' class='msg' role='status' aria-live='polite'></span>"
-            "<div class='hint'>Drag to try other plant sizes. SCR = SCMVA ÷ plant MW is recalculated here "
-            f"in your browser; short-circuit MVA does not change with plant size. Files exported with "
-            f"--out keep the original {mw0:g} MW.</div></div>"
-        )
+        ci = cost["inputs"] if cost else None
+
+        def fld(fid, label, value, unit, mn="0", note=""):
+            v = "" if value is None else f"{value:g}"
+            return (f"<label class='fld' for='{fid}'>{label}<input id='{fid}' type='number' min='{mn}' "
+                    f"step='any' value='{v}'{note}>{unit}</label>")
+
+        panel = [
+            "<div class='slider whatif'><div class='wrow'><label for='mw-range'>Plant size</label>",
+            f"<input id='mw-range' type='range' min='{step}' max='{top:g}' step='{step}' value='{mw0:g}'>",
+            f"<input id='mw-num' type='number' min='1' step='any' value='{mw0:g}' aria-label='Plant size in MW'> MW",
+            "<button id='mw-reset' type='button'>Reset all</button>",
+            "<span id='mw-msg' class='msg' role='status' aria-live='polite'></span></div>",
+            "<div class='wrow'><div class='wh'>Flag thresholds (SCR)</div>",
+            fld("in-wk", "Weak below", wk, ""),
+            fld("in-vw", "Very weak below", vw, ""),
+            "</div>",
+        ]
+        if ci:
+            panel += [
+                "<div class='wrow'><div class='wh'>Cost screening</div>",
+                fld("in-target", "Target SCR", ci.target_scr, ""),
+                fld("in-xd", "Condenser X″d", ci.condenser_xdss_pu, " pu"),
+                fld("in-xt", "Transformer Xt", ci.condenser_xt_pu, " pu"),
+                fld("in-cpm", "Condenser", ci.condenser_cost_per_mva, " $/MVA"),
+                fld("in-gtc", "Gen-tie", ci.gen_tie_cost_per_mile, " $/mile"),
+                "</div>",
+            ]
+        panel.append(
+            "<div class='hint'>Change any value to recalculate instantly in your browser"
+            + (" (per-bus distances and POI costs are editable in the cost table)" if ci else "")
+            + ". SCR = SCMVA ÷ plant MW; short-circuit MVA does not change with these inputs. "
+            f"Files exported with --out keep the values the report was created with ({mw0:g} MW).</div></div>")
+        parts.append("".join(panel))
 
     # --- Network map (V1) ----------------------------------------------------
     if network_svg or network_note:
@@ -299,9 +396,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
             parts.append(f"<div class='mapwrap'>{network_svg}</div>")
             parts.append(
                 "<div class='legend'>"
-                f"<span><span class='sw' style='background:var(--vw)'></span>Very weak: below {vw:g}</span>"
-                f"<span><span class='sw' style='background:var(--wk)'></span>Weak: {vw:g} to below {wk:g}</span>"
-                f"<span><span class='sw' style='background:var(--ok)'></span>No flag: {wk:g} or above</span>"
+                f"<span><span class='sw' style='background:var(--vw)'></span>Very weak: below {TV}</span>"
+                f"<span><span class='sw' style='background:var(--wk)'></span>Weak: {TV} to below {TW}</span>"
+                f"<span><span class='sw' style='background:var(--ok)'></span>No flag: {TW} or above</span>"
                 "<span><span class='sw' style='background:var(--muted);border-radius:2px'></span>"
                 "Square = generator or grid source bus</span>"
                 "<span>Dashed line = transformer</span><span>Pulsing ring and label = weakest flagged buses (up to 8)</span>"
@@ -322,8 +419,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         width = max(p.scr / scale * 100, 0.8)
         tick_label = (i == 0)
         ticks = "".join(
-            f"<div class='tick' data-th='{th:g}' style='left:{th / scale * 100:.2f}%'>"
-            f"{f'<span>{th:g}</span>' if tick_label else ''}</div>" for th in (vw, wk))
+            f"<div class='tick' data-kind='{kind}' data-th='{th:g}' style='left:{th / scale * 100:.2f}%'>"
+            f"{f'<span>{th:g}</span>' if tick_label else ''}</div>" for kind, th in (("vw", vw), ("wk", wk)))
         parts.append(
             f"<div class='row'{dscm(p)}><div class='name' title='{escape(p.plant_id)}'>{escape(p.plant_id)}</div>"
             f"<div class='track'><div class='bar {cls}' style='width:{width:.2f}%;animation-delay:{min(i * 20, 600)}ms'>"
@@ -335,9 +432,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         parts.append(f"<div class='note'>{cap_note}</div>")
     parts.append(
         "<div class='legend'>"
-        f"<span><span class='sw' style='background:var(--vw)'></span>Very weak: below {vw:g}</span>"
-        f"<span><span class='sw' style='background:var(--wk)'></span>Weak: {vw:g} to below {wk:g}</span>"
-        f"<span><span class='sw' style='background:var(--ok)'></span>No flag: {wk:g} or above</span>"
+        f"<span><span class='sw' style='background:var(--vw)'></span>Very weak: below {TV}</span>"
+        f"<span><span class='sw' style='background:var(--wk)'></span>Weak: {TV} to below {TW}</span>"
+        f"<span><span class='sw' style='background:var(--ok)'></span>No flag: {TW} or above</span>"
         "<span>Dashed lines mark the thresholds</span></div>"
     )
 
@@ -352,13 +449,13 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     cap_scale = max(p.max_rating_no_flag for p in cap_shown) if cap_shown else 1.0
     parts.append(f"<h2>Largest plant before a weak flag</h2>"
                  f"<div class='note' style='margin-top:-4px;margin-bottom:8px'>Largest plant rating "
-                 f"({basis}) each location could host while keeping SCR at or above {wk:g}: "
-                 f"SCMVA ÷ {wk:g}. Single-plant screening only; nearby plants share this strength."
+                 f"({basis}) each location could host while keeping SCR at or above {TW}: "
+                 f"SCMVA ÷ {TW}. Single-plant screening only; nearby plants share this strength."
                  "</div><div class='chart'>")
     for i, p in enumerate(cap_shown):
         width = max(p.max_rating_no_flag / cap_scale * 100, 0.8)
         parts.append(
-            f"<div class='row'><div class='name' title='{escape(p.plant_id)}'>{escape(p.plant_id)}</div>"
+            f"<div class='row cap-row'{dscm(p)}><div class='name' title='{escape(p.plant_id)}'>{escape(p.plant_id)}</div>"
             f"<div class='track'><div class='bar cap' style='width:{width:.2f}%;animation-delay:{min(i * 20, 600)}ms'>"
             f"</div></div><div><span class='val'>{p.max_rating_no_flag:,.0f} {basis}</span></div></div>"
         )
@@ -404,7 +501,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                      f"<td>{escape(p.group or '')}</td><td class='n'>{p.scmva:,.1f}</td>"
                      f"<td class='n c-rating'>{p.rating:,.1f}</td><td class='n c-scr'>{p.scr:.3f}</td>"
                      f"<td><span class='pill {cls}'>{label}</span></td>"
-                     f"<td class='n'>{p.max_rating_no_flag:,.1f}</td></tr>")
+                     f"<td class='n c-max'>{p.max_rating_no_flag:,.1f}</td></tr>")
     parts.append("</tbody></table></div>")
     if result.groups:
         parts.append("<div class='tablewrap' style='margin-top:14px'><table><thead><tr>"
@@ -423,7 +520,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         "contribution of inverter-based resources, per NERC.",
         f"SCR = SCMVA ÷ plant rating ({basis}). WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the "
         "plants in a group are fully interacting.",
-        f"Flag bands: below {vw:g} very weak; {vw:g} to below {wk:g} weak; {wk:g} or above no "
+        f"Flag bands: below {TV} very weak; {TV} to below {TW} weak; {TW} or above no "
         "flag. Default bands follow HVDC planning practice (IEEE Std 1204-1997); user-configurable.",
     ] + [escape(n) for n in (notes or [])]
     parts.append("<h2>Method and assumptions</h2><div class='box'><ul>")
@@ -437,8 +534,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         cfg = {"vw": vw, "wk": wk, "mw": mw0, "maxLabels": 8}
         if cost:
             ci = cost["inputs"]
-            cfg["cost"] = {"target": ci.target_scr, "x": ci.condenser_xdss_pu + ci.condenser_xt_pu,
-                           "cpm": ci.condenser_cost_per_mva, "gtc": ci.gen_tie_cost_per_mile}
+            cfg["cost"] = {"target": ci.target_scr, "xd": ci.condenser_xdss_pu, "xt": ci.condenser_xt_pu,
+                           "cpm": ci.condenser_cost_per_mva, "gtc": ci.gen_tie_cost_per_mile,
+                           "follow": cost.get("target_follows_weak", False)}
         parts.append(f"<script type='application/json' id='scr-cfg'>{json.dumps(cfg)}</script>")
         parts.append(f"<script>{SCRIPT}</script>")
     parts.append("</div></body></html>")
@@ -471,8 +569,9 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
         ca, cb = _cls(a, vw, wk), _cls(b, vw, wk)
         diff += ca != cb
         pa, pb = a / scale * 100, b / scale * 100
-        ticks = "".join(f"<div class='tick cmp-tick' data-th='{th:g}' style='left:{th / scale * 100:.2f}%'>"
-                        f"{f'<span>{th:g}</span>' if i == 0 else ''}</div>" for th in (vw, wk))
+        ticks = "".join(f"<div class='tick cmp-tick' data-kind='{kind}' data-th='{th:g}' "
+                        f"style='left:{th / scale * 100:.2f}%'>"
+                        f"{f'<span>{th:g}</span>' if i == 0 else ''}</div>" for kind, th in (("vw", vw), ("wk", wk)))
         out.append(
             f"<div class='row{' diff' if ca != cb else ''}' data-scmva='{p.scmva:.6g}' "
             f"data-scmva2='{compare[p.plant_id]:.6g}'>"
@@ -516,20 +615,23 @@ def _cost_section(cost, live) -> str:
         "<h2>Interconnection cost screening</h2>",
         "<div class='inputs'>",
         f"<span>Plant: <b>{mw_html} MW</b></span>",
-        f"<span>Target SCR: <b>{ci.target_scr:g}</b></span>",
-        f"<span>Condenser X″d + Xt: <b>{ci.condenser_xdss_pu:g} + {ci.condenser_xt_pu:g} pu</b></span>",
-        "<span>Condenser cost: <b>" + (f"{_money(ci.condenser_cost_per_mva)}/MVA" if ci.condenser_cost_per_mva
-                                         is not None else "not entered") + "</b></span>",
-        "<span>Gen-tie cost: <b>" + (f"{_money(ci.gen_tie_cost_per_mile)}/mile" if ci.gen_tie_cost_per_mile
-                                       is not None else "not entered") + "</b></span>",
+        f"<span>Target SCR: <b id='ci-target'>{ci.target_scr:g}</b></span>",
+        f"<span>Condenser X″d + Xt: <b id='ci-x'>{ci.condenser_xdss_pu:g} + {ci.condenser_xt_pu:g} pu</b></span>",
+        "<span>Condenser cost: <b id='ci-cpm'>" + (f"{_money(ci.condenser_cost_per_mva)}/MVA"
+                                                   if ci.condenser_cost_per_mva is not None else "not entered")
+        + "</b></span>",
+        "<span>Gen-tie cost: <b id='ci-gtc'>" + (f"{_money(ci.gen_tie_cost_per_mile)}/mile"
+                                                 if ci.gen_tie_cost_per_mile is not None else "not entered")
+        + "</b></span>",
         "<span>Buses costed: <b>" + (f"{len(rows)} candidate(s) from the site file" if ci.sites
                                        else f"all {len(rows)} (condenser mitigation only)") + "</b></span>",
         "</div>",
     ]
     if not priced:
         out.append("<div class='note' style='margin-bottom:8px'>No cost rates entered, so only the "
-                   "condenser size needed is shown. Add --condenser-cost-per-mva, "
-                   "--gen-tie-cost-per-mile and --site-costs to rank buses by cost.</div>")
+                   "condenser size needed is shown. Enter rates "
+                   + ("in the inputs above" if live else "with --condenser-cost-per-mva and "
+                      "--gen-tie-cost-per-mile") + " and per-bus costs to rank buses by cost.</div>")
     out.append("<div class='legend' style='margin:0 0 8px'>"
                "<span><span class='sw seg-c'></span>Synchronous condenser</span>"
                "<span><span class='sw seg-g'></span>Gen-tie line</span>"
@@ -537,20 +639,30 @@ def _cost_section(cost, live) -> str:
     out.append("<div class='tablewrap'><table class='cost'><thead><tr><th class='n'>#</th><th>Bus</th>"
                "<th class='n'>SCR</th><th class='n'>Added SCMVA needed</th><th class='n'>Condenser MVA</th>"
                "<th class='n'>Condenser cost</th><th class='n'>Gen-tie (mi)</th><th class='n'>Gen-tie cost</th>"
-               "<th class='n'>POI cost</th><th class='n'>Total</th><th>Breakdown</th></tr></thead>"
+               "<th class='n'>POI cost ($)</th><th class='n'>Total</th><th>Breakdown</th></tr></thead>"
                "<tbody id='cost-body'>")
     for i, r in enumerate(rows, start=1):
         w = (lambda v: f"{(v / mx * 100) if (v and mx) else 0:.2f}%")
         inc = "" if r.complete else " <span class='inc'>(incomplete)</span>"
         dist = "" if r.gen_tie_mi is None else f"{r.gen_tie_mi:.6g}"
         poi = "" if r.poi_cost is None else f"{r.poi_cost:.6g}"
+        bus = escape(r.bus_id)
+        if live:
+            dist_cell = (f"<input class='e-dist' type='number' min='0' step='any' value='{dist}' "
+                         f"aria-label='Gen-tie distance in miles, {bus}'>")
+            poi_cell = (f"<input class='e-poi' type='number' min='0' step='any' value='{poi}' "
+                        f"aria-label='POI substation cost in dollars, {bus}'>")
+        else:
+            dist_cell = "—" if r.gen_tie_mi is None else f"{r.gen_tie_mi:g}"
+            poi_cell = _money(r.poi_cost)
         out.append(
-            f"<tr data-scmva='{r.scmva:.6g}' data-dist='{dist}' data-poi='{poi}'>"
-            f"<td class='n k-rank'>{i}</td><td>{escape(r.bus_id)}</td>"
+            f"<tr data-scmva='{r.scmva:.6g}' data-dist='{dist}' data-poi='{poi}' "
+            f"data-dist0='{dist}' data-poi0='{poi}'>"
+            f"<td class='n k-rank'>{i}</td><td>{bus}</td>"
             f"<td class='n k-scr'>{r.scr:.2f}</td><td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"
             f"<td class='n k-cmva'>{r.condenser_mva:,.1f}</td><td class='n k-cc'>{_money(r.condenser_cost)}</td>"
-            f"<td class='n'>{'—' if r.gen_tie_mi is None else f'{r.gen_tie_mi:g}'}</td>"
-            f"<td class='n'>{_money(r.gen_tie_cost)}</td><td class='n'>{_money(r.poi_cost)}</td>"
+            f"<td class='n'>{dist_cell}</td>"
+            f"<td class='n k-gc'>{_money(r.gen_tie_cost)}</td><td class='n'>{poi_cell}</td>"
             f"<td class='n k-tot'>{_money(r.total_cost)}{inc}</td>"
             f"<td><div class='mini'><span class='seg-c' style='width:{w(r.condenser_cost)}'></span>"
             f"<span class='seg-g' style='width:{w(r.gen_tie_cost)}'></span>"

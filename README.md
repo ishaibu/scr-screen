@@ -71,7 +71,15 @@ scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --report scan.html 
 scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --method iec60909
 ```
 
-`--open` opens the report in your browser as soon as it is ready. In a scan report, use the **plant-size slider** to try other sizes without re-running. The map, charts, and table recalculate instantly in the browser.
+`--open` opens the report in your browser as soon as it is ready.
+
+**What-if inputs:** scan reports have an inputs panel. Change any of these and the whole report (map, charts, tables, cost ranking) recalculates instantly in the browser, with no re-run needed:
+
+- plant size (slider or typed value)
+- weak and very-weak SCR thresholds
+- with cost screening: target SCR, condenser X''d, transformer Xt, condenser $/MVA, gen-tie $/mile, and each candidate bus's gen-tie distance and POI cost (edited directly in the cost table)
+
+**Reset all** returns to the values the report was created with. Invalid entries (e.g. 0 MW) are flagged and ignored.
 
 Run `scr-screen --help` or `scr-screen run --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`).
 
@@ -115,7 +123,7 @@ scr-screen scan mynetwork.xlsx --plant-mw 1500 --report scan.html --site-costs s
     --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000 --cost-out costs.csv
 ```
 
-The numbers above and in `examples/ieee39_sites_example.csv` are **illustrative only**. SCR-Screen ships no cost data; enter your own. In the report, the cost ranking also updates with the plant-size slider, so you can see the cheapest bus change as the plant grows.
+The numbers above and in `examples/ieee39_sites_example.csv` are **illustrative only**. SCR-Screen ships no cost data; enter your own. In the report, every cost input is editable and the ranking updates instantly, so you can see the cheapest bus change as the plant grows or as costs change.
 
 > Cost screening excludes network upgrades (thermal, voltage, stability), which are often the largest interconnection cost and require power flow and interconnection-queue studies. Grid-forming inverters may mitigate weak-grid conditions at lower cost and are not costed.
 
