@@ -1,19 +1,27 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "scr-screen"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Short-circuit ratio (SCR/WSCR) screening for inverter-based resource interconnection"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Shaibu Ibrahim, P.E.", email = "ishaibu136@gmail.com" }]
 keywords = ["power-systems", "short-circuit-ratio", "grid-interconnection", "inverter-based-resources"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -22,6 +30,12 @@ dependencies = [
     "xlsxwriter",          # write Excel network files (scr-screen convert)
     "matpowercaseframes",  # read MATPOWER .m files
 ]
+
+[project.urls]
+Homepage = "https://github.com/ishaibu/scr-screen"
+Documentation = "https://github.com/ishaibu/scr-screen#readme"
+Issues = "https://github.com/ishaibu/scr-screen/issues"
+Changelog = "https://github.com/ishaibu/scr-screen/blob/main/CHANGELOG.md"
 
 [project.scripts]
 scr-screen = "scr_screen.cli:main"
