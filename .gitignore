@@ -221,3 +221,5 @@ my_scan.html
 notebook_output/
 my_cost.html
 my_ieee39.xlsx
+/my_*
+/sites.csv
