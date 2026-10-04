@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use SCR-Screen in your work, please cite it as below."
+title: "SCR-Screen: open-source short-circuit ratio screening for inverter-based resource interconnection"
+type: software
+authors:
+  - family-names: Ibrahim
+    given-names: Shaibu
+version: 0.1.0
+date-released: 2026-10-04
+doi: 10.5281/zenodo.23130832
+url: "https://github.com/ishaibu/scr-screen"
+repository-code: "https://github.com/ishaibu/scr-screen"
+license: MIT
+keywords:
+  - power systems
+  - short-circuit ratio
+  - grid interconnection
+  - inverter-based resources
+  - system strength

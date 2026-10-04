@@ -3,6 +3,7 @@
 [![tests](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml/badge.svg)](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23130832.svg)](https://doi.org/10.5281/zenodo.23130832)
 
 **Open-source short-circuit ratio (SCR) screening for solar, wind, and battery storage interconnection.**
 
@@ -233,6 +234,14 @@ Found a bug, have a question, or use SCR-Screen in your work? Please [open an is
 3. Y. Zhang et al., "Evaluating system strength for large-scale wind plant integration," IEEE PES General Meeting, 2014.
 4. IEEE Std 1204-1997, *IEEE Guide for Planning DC Links Terminating at AC Locations Having Low Short-Circuit Capacities*.
 5. IEC 60909-0, *Short-circuit currents in three-phase a.c. systems*.
+
+## How to cite
+
+If you use SCR-Screen in your work, please cite it:
+
+> Ibrahim, S. (2026). *SCR-Screen: open-source short-circuit ratio screening for inverter-based resource interconnection* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23130832
+
+This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
 
 ## License and author
 
