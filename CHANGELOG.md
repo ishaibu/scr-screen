@@ -28,6 +28,10 @@ First public release.
 ### Cost screening
 - Screening-level interconnection cost per candidate bus: synchronous condenser to reach a target SCR, gen-tie line, and POI substation. All costs are user inputs; network upgrades are excluded.
 - `scr-screen sites-template` creates the per-bus site cost file.
+- Target check: buses below the target SCR are listed in an alert, each with the largest plant that meets the target and the condenser alternative; "SCR after condenser" shown for every bus.
+
+### SCR-Screen Lite
+- Browser calculator for direct mode (SCR, WSCR, flags, largest plant, target check, condenser and cost), responsive and theme-safe for embedding in other websites. Published under `docs/lite/`.
 
 ### Reports and interfaces
 - Self-contained HTML report (works offline; print to PDF from any browser): summary cards, network map from bus coordinates or an automatic layout, SCR chart, method comparison (classical vs IEC 60909), largest-plant chart, cost ranking, results tables, method notes, and disclaimer.

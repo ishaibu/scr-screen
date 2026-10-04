@@ -117,6 +117,9 @@ animation:pop .45s ease-out both;transition:fill .3s}
 .cost .mini span{height:100%;transition:width .45s ease}
 .seg-c{background:var(--wk)}.seg-g{background:var(--accent)}.seg-p{background:var(--muted)}
 .cost .inc{color:var(--muted);font-size:12px}
+.cost .k-tc{font-size:13px;line-height:1.4;min-width:150px}.cost .meet{color:var(--ok);font-weight:600}.cost .below{color:var(--wk);font-weight:600}
+.calert{margin:4px 0 10px;padding:10px 14px;border-radius:8px;border-left:4px solid var(--wk);background:var(--wkbg);font-size:14px}
+.calert.good{border-left-color:var(--ok);background:var(--okbg)}
 .cost td:nth-child(2){white-space:nowrap}
 .inputs{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin-bottom:10px}
 .inputs b{color:var(--fg);font-weight:600}
@@ -226,9 +229,18 @@ function costUpdate(resort){
     var parts=[cc,gc,pc].filter(function(v){return v!==null;});
     var tot=parts.length?parts.reduce(function(a,b){return a+b;},0):null;
     if(tot!==null) mx=Math.max(mx,tot);
-    data.push({t:t,need:need,cm:cm,cc:cc,gc:gc,pc:pc,tot:tot,ok:ok,scr:sc/S.mw});});
+    data.push({t:t,need:need,cm:cm,cc:cc,gc:gc,pc:pc,tot:tot,ok:ok,scr:sc/S.mw,meets:sc/S.mw>=S.target,maxT:sc/S.target,
+      bus:q('td:nth-child(2)',t).textContent});});
+  var below=data.filter(function(d){return !d.meets;}), al=q('#cost-alert');
+  if(al){al.className='calert'+(below.length?'':' good');
+    al.innerHTML=below.length?'<b>'+below.length+' of '+data.length+' bus(es) are below your target SCR of '+g(S.target)+':</b> '+
+      below.slice(0,8).map(function(d){return d.bus;}).join(', ')+(below.length>8?' \u2026':'')+'. For each, use a plant no larger than its \u201cmax at target\u201d size, or add the condenser shown.'
+      :'<b>All costed buses meet your target SCR of '+g(S.target)+'.</b> No condenser needed.';}
   data.forEach(function(d){var t=d.t;
     q('.k-scr',t).textContent=f(d.scr,2); q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
+    q('.k-after',t).textContent=f(d.cm>0?S.target:d.scr,2);
+    q('.k-tc',t).innerHTML=d.meets?"<span class='meet'>\u2713 Meets</span>":"<span class='below'>Below target</span><br>Max at target: <b>"+
+      Math.round(d.maxT).toLocaleString('en-US')+" MW</b><br>or condenser: <b>"+num(d.cm)+" MVA</b>";
     q('.k-cc',t).textContent=money(d.cc); var gcell=q('.k-gc',t); if(gcell) gcell.textContent=money(d.gc);
     q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
     var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
@@ -613,6 +625,13 @@ def _money(v):
     return f"${v:.0f}"
 
 
+def _target_check(r) -> str:
+    if r.meets_target:
+        return "<span class='meet'>✓ Meets</span>"
+    return (f"<span class='below'>Below target</span><br>Max at target: <b>{r.max_at_target_mw:,.0f} MW</b>"
+            f"<br>or condenser: <b>{r.condenser_mva:,.1f} MVA</b>")
+
+
 def _cost_section(cost, live) -> str:
     from .cost import LIMITATIONS
 
@@ -643,12 +662,21 @@ def _cost_section(cost, live) -> str:
                    "condenser size needed is shown. Enter rates "
                    + ("in the inputs above" if live else "with --condenser-cost-per-mva and "
                       "--gen-tie-cost-per-mile") + " and per-bus costs to rank buses by cost.</div>")
+    below = [r for r in rows if not r.meets_target]
+    if below:
+        names = ", ".join(escape(r.bus_id) for r in below[:8]) + (" …" if len(below) > 8 else "")
+        alert = (f"<b>{len(below)} of {len(rows)} bus(es) are below your target SCR of {ci.target_scr:g}:</b> {names}. "
+                 "For each, use a plant no larger than its “max at target” size, or add the condenser shown.")
+    else:
+        alert = f"<b>All costed buses meet your target SCR of {ci.target_scr:g}.</b> No condenser needed."
+    out.append(f"<div id='cost-alert' class='calert{'' if below else ' good'}' role='status' aria-live='polite'>{alert}</div>")
     out.append("<div class='legend' style='margin:0 0 8px'>"
                "<span><span class='sw seg-c'></span>Synchronous condenser</span>"
                "<span><span class='sw seg-g'></span>Gen-tie line</span>"
                "<span><span class='sw seg-p'></span>POI substation</span></div>")
     out.append("<div class='tablewrap'><table class='cost'><thead><tr><th class='n'>#</th><th>Bus</th>"
-               "<th class='n'>SCR</th><th class='n'>Added SCMVA needed</th><th class='n'>Condenser MVA</th>"
+               "<th class='n'>SCR</th><th>Target check</th><th class='n'>Added SCMVA needed</th><th class='n'>Condenser MVA</th>"
+               "<th class='n'>SCR after condenser</th>"
                "<th class='n'>Condenser cost</th><th class='n'>Gen-tie (mi)</th><th class='n'>Gen-tie cost</th>"
                "<th class='n'>POI cost ($)</th><th class='n'>Total</th><th>Breakdown</th></tr></thead>"
                "<tbody id='cost-body'>")
@@ -670,8 +698,10 @@ def _cost_section(cost, live) -> str:
             f"<tr data-scmva='{r.scmva:.10g}' data-dist='{dist}' data-poi='{poi}' "
             f"data-dist0='{dist}' data-poi0='{poi}'>"
             f"<td class='n k-rank'>{i}</td><td>{bus}</td>"
-            f"<td class='n k-scr'>{r.scr:.2f}</td><td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"
-            f"<td class='n k-cmva'>{r.condenser_mva:,.1f}</td><td class='n k-cc'>{_money(r.condenser_cost)}</td>"
+            f"<td class='n k-scr'>{r.scr:.2f}</td><td class='k-tc'>{_target_check(r)}</td>"
+            f"<td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"
+            f"<td class='n k-cmva'>{r.condenser_mva:,.1f}</td><td class='n k-after'>{r.scr_after:.2f}</td>"
+            f"<td class='n k-cc'>{_money(r.condenser_cost)}</td>"
             f"<td class='n'>{dist_cell}</td>"
             f"<td class='n k-gc'>{_money(r.gen_tie_cost)}</td><td class='n'>{poi_cell}</td>"
             f"<td class='n k-tot'>{_money(r.total_cost)}{inc}</td>"

@@ -41,19 +41,28 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Outputs | Self-contained HTML report (works offline), CSV, JSON |
 | Interfaces | Command line (`scr-screen`) and Python API |
 
+## Try it without installing
+
+- **[SCR-Screen Lite](https://ishaibu.github.io/scr-screen/lite/)**: browser calculator. Type each plant's short-circuit MVA and MW to get SCR, flags, WSCR, the largest plant before a weak flag, and condenser cost. Runs entirely in your browser.
+- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs.
+
 ## Installation
 
 Requires Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/ishaibu/scr-screen.git
-cd scr-screen
-python -m venv .venv
-# Windows:  .venv\Scripts\activate      macOS/Linux:  source .venv/bin/activate
-pip install -e .
+python -m venv venv
+# Windows:  venv\Scripts\activate      macOS/Linux:  source venv/bin/activate
+pip install scr-screen
 ```
 
-A PyPI release (`pip install scr-screen`) is planned for v0.1.0.
+From source (for contributors):
+
+```bash
+git clone https://github.com/ishaibu/scr-screen.git
+cd scr-screen
+pip install -e ".[dev]"
+```
 
 ## Quick start (command line)
 
@@ -120,6 +129,7 @@ Buses with no path to any source are skipped and listed in the report. PSS/E `.r
 
 For a plant of a given size, SCR-Screen estimates a screening-level cost of connecting at each candidate bus:
 
+- **Target check:** buses below your target SCR are flagged, with the largest plant that meets the target (`SCMVA ÷ target SCR`) and the condenser alternative.
 - **Weak-grid mitigation:** synchronous condenser size to reach a target SCR (default: the weak threshold),
   `condenser MVA = max(0, plant MW × target SCR − SCMVA) × (X''d + Xt)`, assuming the condenser is at the POI.
 - **Gen-tie line:** distance × your cost per mile.

@@ -177,11 +177,15 @@ def _print_costs(rows, n=10):
     def money(v):
         return "-" if v is None else f"${v / 1e6:,.1f}M"
     print(f"\nCost screening (cheapest first, top {min(n, len(rows))}):")
-    print(f"{'#':>3} {'Bus':<12}{'SCR':>7}{'Cond. MVA':>11}{'Cond. cost':>12}{'Gen-tie':>10}{'POI':>9}{'Total':>11}")
+    print(f"{'#':>3} {'Bus':<12}{'SCR':>7}{'Target':>15}{'Cond. MVA':>11}{'Cond. cost':>12}{'Gen-tie':>10}{'POI':>9}{'Total':>11}")
     for i, r in enumerate(rows[:n], start=1):
         flag = "" if r.complete else "  (incomplete)"
-        print(f"{i:>3} {r.bus_id[:11]:<12}{r.scr:>7.2f}{r.condenser_mva:>11.1f}{money(r.condenser_cost):>12}"
+        tc = "meets" if r.meets_target else f"max {r.max_at_target_mw:,.0f} MW"
+        print(f"{i:>3} {r.bus_id[:11]:<12}{r.scr:>7.2f}{tc:>15}{r.condenser_mva:>11.1f}{money(r.condenser_cost):>12}"
               f"{money(r.gen_tie_cost):>10}{money(r.poi_cost):>9}{money(r.total_cost):>11}{flag}")
+    below = [r for r in rows if not r.meets_target]
+    if below:
+        print(f"{len(below)} of {len(rows)} bus(es) below the target SCR: use a smaller plant (max shown) or add the condenser.")
     print("Screening-level only: excludes network upgrades. All costs are your inputs.")
 
 

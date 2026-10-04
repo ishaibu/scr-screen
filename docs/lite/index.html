@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCR-Screen Lite — grid strength calculator</title>
+<meta name="description" content="Free browser calculator for short-circuit ratio (SCR), weighted SCR, maximum plant size, and condenser cost screening for solar, wind, and storage interconnection.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>html,body{margin:0;padding:0;background:#fff}@media (prefers-color-scheme:dark){html,body{background:#0f1b26}}
+#scr-lite{--ink:#12263a;--muted:#5b6b7b;--line:#d8e0e7;--paper:#fff;--panel:#f4f7f9;--accent:#0a9396;--accent-d:#077a7d;
+--vw:#c8321f;--wk:#c76a00;--ok:#11804f;--vwbg:#fdecea;--wkbg:#fff4e2;--okbg:#e8f6ee;
+--f:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+container-type:inline-size;container-name:lite;display:block;width:100%;max-width:1180px;margin:0 auto;
+background:var(--paper);color:var(--ink);font:16px/1.55 var(--f);font-variant-numeric:tabular-nums;text-align:left;
+padding:22px clamp(12px,3vw,24px) 28px;-webkit-text-size-adjust:100%}
+@media (prefers-color-scheme:dark){#scr-lite[data-scheme=auto]{--ink:#e8eef3;--muted:#9db0c0;--line:#2c3d4d;--paper:#0f1b26;--panel:#162533;--vwbg:#3a1712;--wkbg:#3a2a0d;--okbg:#0f3322}}
+/* shield from host-page (theme) styles */
+#scr-lite *,#scr-lite *::before,#scr-lite *::after{box-sizing:border-box;letter-spacing:normal;text-transform:none;text-shadow:none}
+#scr-lite h1,#scr-lite h2,#scr-lite h3,#scr-lite p,#scr-lite ul,#scr-lite table,#scr-lite figure{margin:0;padding:0;font-family:var(--f);color:var(--ink);background:none;border:0}
+#scr-lite h1{font-size:clamp(24px,4.5cqi,32px);line-height:1.15;font-weight:600}
+#scr-lite h2{font-size:19px;line-height:1.3;font-weight:600;margin:0 0 10px}
+#scr-lite h3{font-size:15px;line-height:1.3;font-weight:600;margin:20px 0 8px}
+#scr-lite p{font-size:15px;line-height:1.55;margin:0 0 8px}
+#scr-lite a{color:var(--accent-d);text-decoration:underline;font:inherit;box-shadow:none;background:none}
+#scr-lite button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+font:500 14px/1.2 var(--f);padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--paper);
+color:var(--ink);cursor:pointer;min-height:38px;box-shadow:none;text-transform:none;text-decoration:none;
+width:auto;height:auto;margin:0;outline:0;-webkit-appearance:none;appearance:none}
+#scr-lite button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#scr-lite button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#scr-lite button:hover{border-color:var(--accent)}
+#scr-lite button.del{border:none;min-height:32px;padding:4px 8px;font-size:20px;color:var(--muted);background:none}
+#scr-lite input{all:unset;box-sizing:border-box;display:block;width:100%;min-width:0;font:14px/1.3 var(--f);
+font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);min-height:36px;box-shadow:none;margin:0;height:auto;max-width:none;
+-webkit-appearance:none;appearance:none}
+#scr-lite input[type=number]{text-align:right}
+#scr-lite input::placeholder{color:var(--muted);opacity:.8}
+#scr-lite input.bad{border-color:var(--vw);box-shadow:0 0 0 1px var(--vw)}
+#scr-lite :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#scr-lite table{width:100%;border-collapse:collapse;font-size:14px}
+#scr-lite th,#scr-lite td{border:0;border-bottom:1px solid var(--line);box-shadow:none;background:none;padding:7px 8px;text-align:left;vertical-align:middle;font:inherit;color:var(--ink)}
+#scr-lite th{font-size:13px;font-weight:500;color:var(--muted);vertical-align:bottom}
+#scr-lite th.n,#scr-lite td.n{text-align:right}
+#scr-lite details{margin:0;padding:0;border:0}
+#scr-lite summary{cursor:pointer;font-weight:600;font-size:15px;list-style:revert}
+/* layout */
+#scr-lite .top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:8px 20px;padding-bottom:14px;border-bottom:3px solid var(--accent)}
+#scr-lite .lede{color:var(--muted);max-width:64ch;margin-top:6px}
+#scr-lite .privacy{font-size:13px;color:var(--muted);margin:0}
+#scr-lite .gh{font-size:14px}
+#scr-lite .block{margin-top:22px}
+#scr-lite .hint{font-size:13px;color:var(--muted)}
+/* plant rows: cards on narrow widths, a grid on wide */
+#scr-lite .head{display:none}
+#scr-lite .plant{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;padding:12px;border:1px solid var(--line);border-radius:8px;margin:0 0 10px;position:relative}
+#scr-lite .plant label{display:block;font-size:12px;color:var(--muted)}
+#scr-lite .plant label span{display:block;margin-bottom:3px}
+#scr-lite .plant .c-id{grid-column:1 / -1;padding-right:36px}
+#scr-lite .plant .c-del{position:absolute;top:6px;right:6px}
+@container lite (min-width:720px){
+  #scr-lite .head,#scr-lite .plant{display:grid;grid-template-columns:minmax(90px,1.2fr) minmax(90px,1fr) minmax(80px,.9fr) minmax(64px,.7fr) minmax(70px,.8fr) minmax(110px,1.2fr) 40px;gap:8px;align-items:center}
+  #scr-lite .head{font-size:13px;color:var(--muted);font-weight:500;padding:0 0 6px;border-bottom:1px solid var(--line);align-items:end}
+  #scr-lite .head span:nth-child(n+2):nth-child(-n+3),#scr-lite .head span:nth-child(5),#scr-lite .head span:nth-child(6){text-align:right}
+  #scr-lite .plant{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:6px 0;margin:0}
+  #scr-lite .plant label span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  #scr-lite .plant .c-id{grid-column:auto;padding-right:0}
+  #scr-lite .plant .c-del{position:static}
+}
+#scr-lite .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#scr-lite .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}
+#scr-lite .settings label{font-size:13px;color:var(--muted);display:block}
+#scr-lite .settings input{margin-top:3px}
+#scr-lite .costbox{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+#scr-lite .msg{color:var(--vw);font-size:13px;min-height:18px;margin-top:8px}
+/* strength ruler */
+#scr-lite .ruler{background:var(--panel);border-radius:10px;padding:30px 16px 14px}
+#scr-lite .track{position:relative}
+#scr-lite .bar{position:relative;height:30px;border-radius:4px;background:var(--okbg)}
+#scr-lite .band{position:absolute;top:0;bottom:0}
+#scr-lite .band.vw{background:var(--vwbg);left:0;border-radius:4px 0 0 4px}
+#scr-lite .band.wk{background:var(--wkbg)}
+#scr-lite .edge{position:absolute;top:-6px;height:42px;border-left:2px solid var(--muted)}
+#scr-lite .edge span{position:absolute;top:-20px;left:-5px;font-size:12px;color:var(--muted)}
+#scr-lite .dot{position:absolute;top:8px;width:14px;height:14px;margin-left:-7px;border-radius:50%;border:2px solid var(--paper);transition:left .35s ease}
+#scr-lite .dot.vw{background:var(--vw)}#scr-lite .dot.wk{background:var(--wk)}#scr-lite .dot.ok{background:var(--ok)}
+#scr-lite .dot.grp{border-radius:2px;transform:rotate(45deg)}
+#scr-lite .labels{position:relative}
+#scr-lite .lab{position:absolute;font-size:12px;font-weight:600;white-space:nowrap;line-height:16px}
+#scr-lite .lead{position:absolute;width:0;border-left:1px solid var(--muted);opacity:.6}
+#scr-lite .axis{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
+#scr-lite .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:10px}
+#scr-lite .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+#scr-lite .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+#scr-lite .pill.vw{color:var(--vw);background:var(--vwbg)}#scr-lite .pill.wk{color:var(--wk);background:var(--wkbg)}#scr-lite .pill.ok{color:var(--ok);background:var(--okbg)}
+#scr-lite .results{display:grid;grid-template-columns:1fr;gap:4px 28px}
+@container lite (min-width:820px){#scr-lite .results{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
+#scr-lite .scroll{overflow-x:auto}
+#scr-lite .groups{display:grid;gap:10px}
+#scr-lite .g{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px}
+#scr-lite .g .row{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+#scr-lite .g .tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:600}
+#scr-lite .g p{margin:6px 0 0;font-size:13px;color:var(--muted)}
+#scr-lite .empty{color:var(--muted);font-size:14px}
+#scr-lite .foot{margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+#scr-lite .foot p{font-size:13px;color:var(--muted);max-width:90ch}
+@media print{#scr-lite .actions,#scr-lite button{display:none}#scr-lite *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media (prefers-reduced-motion:reduce){#scr-lite *{transition:none!important}}
+
+#scr-lite .edge.e-tg{border-left:3px dashed var(--accent);display:none}
+#scr-lite .edge.e-tg span{color:var(--accent-d);font-weight:600;left:4px;white-space:nowrap}
+#scr-lite .alert{margin:12px 0 0;padding:10px 14px;border-radius:8px;border-left:4px solid var(--wk);background:var(--wkbg);font-size:14px;display:none}
+#scr-lite .alert.good{border-left-color:var(--ok);background:var(--okbg)}
+#scr-lite .tc{font-size:13px;line-height:1.4;min-width:150px}
+#scr-lite .tc b{font-weight:600}
+#scr-lite .tc .meet{color:var(--ok);font-weight:600}
+#scr-lite .tc .below{color:var(--wk);font-weight:600}
+</style>
+</head>
+<body>
+<div id="scr-lite" data-scheme="auto">
+<div class="top">
+  <div>
+    <h1>SCR-Screen Lite</h1>
+    <p class="lede">Enter the short-circuit MVA at each point of interconnection and the plant size. See the short-circuit ratio, weak-grid flags, the largest plant each site can host, and what it would cost to strengthen a weak site.</p>
+    <p class="privacy">Runs entirely in your browser. Nothing you enter is sent anywhere.</p>
+  </div>
+  <a class="gh" href="https://github.com/ishaibu/scr-screen" target="_blank" rel="noopener">Full tool and source code (GitHub)</a>
+</div>
+
+<div class="block">
+  <h2>Your plants</h2>
+  <p class="hint">Short-circuit MVA should exclude inverter-based resources (as NERC defines SCR). Plants with the same group label are also screened together (WSCR).</p>
+  <div class="head" aria-hidden="true"><span>Plant</span><span>Short-circuit MVA</span><span>Rating (MW)</span><span>Group</span><span>Gen-tie (mi)</span><span>POI cost ($)</span><span></span></div>
+  <div class="rows"></div>
+  <div class="actions">
+    <button type="button" class="primary" data-act="add">Add plant</button>
+    <button type="button" data-act="example">Load example</button>
+    <button type="button" data-act="clear">Clear all</button>
+  </div>
+  <div class="msg" role="status" aria-live="polite"></div>
+
+  <h3>Flag thresholds (SCR)</h3>
+  <div class="settings">
+    <label>Weak below<input type="number" data-k="wk" min="0" step="any" value="3" inputmode="decimal"></label>
+    <label>Very weak below<input type="number" data-k="vw" min="0" step="any" value="2" inputmode="decimal"></label>
+  </div>
+
+  <details class="costbox">
+    <summary>Cost screening (optional)</summary>
+    <p class="hint" style="margin-top:8px">Set the SCR you want each plant to have. Plants below it are marked in the results with two ways to get there: a smaller plant, or a synchronous condenser at the point of interconnection. Flags stay on the standard screening bands above. Enter your own costs; this calculator includes no cost data.</p>
+    <p class="hint warn-target" style="color:var(--wk);display:none">Target SCR is below the weak threshold, so sites mitigated to the target would still be flagged.</p>
+    <div class="settings">
+      <label>Target SCR (your goal)<input type="number" data-k="target" min="0" step="any" value="3" inputmode="decimal" title="Follows the weak threshold until you change it"></label>
+      <label>Condenser X″d (pu)<input type="number" data-k="xd" min="0" step="any" value="0.2" inputmode="decimal"></label>
+      <label>Transformer Xt (pu)<input type="number" data-k="xt" min="0" step="any" value="0.1" inputmode="decimal"></label>
+      <label>Condenser ($/MVA)<input type="number" data-k="cpm" min="0" step="any" placeholder="e.g. 100000" inputmode="decimal"></label>
+      <label>Gen-tie ($/mile)<input type="number" data-k="gtc" min="0" step="any" placeholder="e.g. 2000000" inputmode="decimal"></label>
+    </div>
+  </details>
+</div>
+
+<div class="block">
+  <h2>Results</h2>
+  <div class="ruler" aria-label="Strength ruler: each plant and group placed on the SCR scale">
+    <div class="track">
+      <div class="bar"><div class="band vw"></div><div class="band wk"></div></div>
+      <div class="edge e-vw"><span>2</span></div><div class="edge e-wk"><span>3</span></div>
+      <div class="edge e-tg"><span>Target</span></div>
+      <div class="dots"></div>
+    </div>
+    <div class="labels"></div>
+    <div class="axis"><span>0</span><span class="axis-max">10</span></div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--vw)"></span>Very weak</span>
+      <span><span class="sw" style="background:var(--wk)"></span>Weak</span>
+      <span><span class="sw" style="background:var(--ok)"></span>No flag</span>
+      <span><span class="sw" style="background:var(--muted);border-radius:2px;transform:rotate(45deg)"></span>Group (WSCR)</span>
+      <span class="cost"><span class="sw" style="background:var(--accent);border-radius:1px;width:3px;height:12px"></span>Your target</span>
+    </div>
+  </div>
+  <div class="alert cost" role="status" aria-live="polite"></div>
+  <div class="results">
+    <div>
+      <h3>Each plant on its own (SCR)</h3>
+      <div class="scroll"><table class="res">
+        <thead><tr><th>Plant</th><th class="n">SCR</th><th>Flag (screening bands)</th><th class="n" title="Largest plant before a weak flag = SCMVA ÷ weak threshold">Max size, no flag (MW)</th>
+        <th class="cost">Target check</th><th class="n cost">Condenser (MVA)</th><th class="n cost">SCR after condenser</th><th class="n cost">Total cost</th></tr></thead>
+        <tbody></tbody></table></div>
+      <p class="hint cost" style="margin-top:6px">* Incomplete: a needed cost rate is blank.</p>
+    </div>
+    <div>
+      <h3>Plants screened together (WSCR)</h3>
+      <div class="groups"></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <p><b>How it is calculated.</b> SCR = short-circuit MVA ÷ plant MW. WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the plants in a group are fully interacting (ERCOT/NERC). Max size (largest plant before a weak flag) = SCMVA ÷ weak threshold. Condenser MVA = max(0, MW × target SCR − SCMVA) × (X″d + Xt), assuming the condenser is at the point of interconnection. Default flag bands follow HVDC planning practice (IEEE Std 1204-1997); there is no universal weak-grid threshold.</p>
+  <p><b>Screening only.</b> Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the transmission provider's requirements. SCR-based metrics assume grid-following inverters and do not replace the inverter manufacturer's minimum SCR. Cost screening excludes network upgrades, which are often the largest interconnection cost.</p>
+  <p>To calculate short-circuit MVA from a network model, scan every bus, and compare methods, use the full <a href="https://github.com/ishaibu/scr-screen" target="_blank" rel="noopener">SCR-Screen</a> tool. Created by Shaibu Ibrahim, P.E. · MIT License.</p>
+</div>
+
+</div>
+<script>
+(function(){
+  "use strict";
+  var root=document.getElementById("scr-lite"); if(!root||root.dataset.ready)return; root.dataset.ready="1";
+  var $=function(s){return root.querySelector(s);}, $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+  var K=function(k){return root.querySelector('[data-k="'+k+'"]');};
+  var EXAMPLE=[
+    {id:"PV-A",scmva:1000,mw:200,group:"G1",dist:12,poi:18000000},
+    {id:"BESS-B",scmva:600,mw:100,group:"G1",dist:12,poi:0},
+    {id:"Wind-C",scmva:485.86,mw:100,group:"",dist:8,poi:15000000},
+    {id:"PV-D",scmva:150,mw:100,group:"",dist:4,poi:15000000}];
+  var rowsEl=$(".rows"), resBody=$(".res tbody"), groupsEl=$(".groups"), msg=$(".msg");
+  var NAME={vw:"Very weak",wk:"Weak",ok:"No flag"};
+  function fmt(v,d){return v.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});}
+  function money(v){if(v===null)return "\u2014";var a=Math.abs(v);
+    if(a>=1e9)return "$"+(v/1e9).toFixed(2)+"B"; if(a>=1e6)return "$"+(v/1e6).toFixed(1)+"M";
+    if(a>=1e3)return "$"+(v/1e3).toFixed(0)+"k"; return "$"+v.toFixed(0);}
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+  function num(el,o){var t=el.value.trim(); if(t===""&&o.empty)return {ok:true,v:null};
+    var v=+t; return {ok:t!==""&&isFinite(v)&&(o.zero?v>=0:v>0),v:v};}
+  function v0(x){return x===null||x===undefined?"":x;}
+  function field(cls,label,type,val,extra){return '<label class="'+cls+'"><span>'+label+'</span><input type="'+type+'" '+(extra||"")+' value="'+esc(v0(val))+'"></label>';}
+  function addRow(p){
+    p=p||{};
+    var d=document.createElement("div"); d.className="plant";
+    d.innerHTML=field("c-id","Plant","text",p.id,'data-f="id"')+
+      field("c-sc","Short-circuit MVA","number",p.scmva,'data-f="sc" min="0" step="any" inputmode="decimal"')+
+      field("c-mw","Rating (MW)","number",p.mw,'data-f="mw" min="0" step="any" inputmode="decimal"')+
+      field("c-g","Group","text",p.group,'data-f="g"')+
+      field("c-d","Gen-tie (mi)","number",p.dist,'data-f="d" min="0" step="any" inputmode="decimal"')+
+      field("c-p","POI cost ($)","number",p.poi,'data-f="p" min="0" step="any" inputmode="decimal"')+
+      '<div class="c-del"><button type="button" class="del" aria-label="Remove plant">\u00d7</button></div>';
+    rowsEl.appendChild(d); return d;
+  }
+  function read(){
+    var errs=[], plants=[];
+    function setting(k,o,name){var el=K(k),r=num(el,o);el.classList.toggle("bad",!r.ok);if(!r.ok)errs.push(name);return r.v;}
+    var s={wk:setting("wk",{},"weak threshold"),vw:setting("vw",{},"very-weak threshold"),
+      target:setting("target",{},"target SCR"),xd:setting("xd",{},"condenser X\u2033d"),xt:setting("xt",{zero:true},"transformer Xt"),
+      cpm:setting("cpm",{zero:true,empty:true},"condenser cost"),gtc:setting("gtc",{zero:true,empty:true},"gen-tie cost")};
+    if(s.wk!==null&&s.vw!==null&&!(s.vw<s.wk)){K("vw").classList.add("bad");errs.push("very-weak threshold (must be below the weak threshold)");}
+    $$(".plant").forEach(function(row,i){
+      var f=function(n){return row.querySelector('[data-f="'+n+'"]');};
+      var sc=f("sc"),mw=f("mw"),d=f("d"),p=f("p"), blank=!sc.value.trim()&&!mw.value.trim();
+      var rs=num(sc,{}),rm=num(mw,{}),rd=num(d,{zero:true,empty:true}),rp=num(p,{zero:true,empty:true});
+      sc.classList.toggle("bad",!blank&&!rs.ok); mw.classList.toggle("bad",!blank&&!rm.ok);
+      d.classList.toggle("bad",!rd.ok); p.classList.toggle("bad",!rp.ok);
+      if(blank)return;
+      if(!rs.ok||!rm.ok||!rd.ok||!rp.ok){errs.push("plant "+(i+1));return;}
+      plants.push({id:f("id").value.trim()||("Plant "+(i+1)),scmva:rs.v,mw:rm.v,group:f("g").value.trim(),dist:rd.v,poi:rp.v});
+    });
+    return {s:s,plants:plants,errs:errs};
+  }
+  function flag(v,s){return v<s.vw?"vw":(v<s.wk?"wk":"ok");}
+  var last=null;
+  function calc(){
+    var r=read(), s=r.s;
+    msg.textContent=r.errs.length?("Check: "+r.errs.join(", ")+". Values must be numbers above 0 (costs and distances can be 0 or blank)."):"";
+    if(s.wk===null||s.vw===null||!(s.vw<s.wk)||s.target===null||s.xd===null||s.xt===null)return;
+    var costOn=$(".costbox").open;
+    $$(".cost").forEach(function(e){e.style.display=costOn?"":"none";});
+    var x=s.xd+s.xt;
+    var rows=r.plants.map(function(p){
+      var scr=p.scmva/p.mw, cm=Math.max(0,p.mw*s.target-p.scmva)*x;
+      var cc=cm===0?0:(s.cpm===null?null:cm*s.cpm), gc=p.dist===null?null:(s.gtc===null?null:p.dist*s.gtc);
+      var parts=[cc,gc,p.poi].filter(function(v){return v!==null;});
+      var after=cm>0?s.target:scr;   // the condenser lifts SCR exactly to the target; otherwise unchanged
+      return {p:p,scr:scr,f:flag(scr,s),max:p.scmva/s.wk,cm:cm,after:after,fa:flag(after,s),
+        meets:scr>=s.target, maxT:p.scmva/s.target,
+        tot:parts.length?parts.reduce(function(a,b){return a+b;},0):null,complete:!(cc===null||(p.dist!==null&&gc===null))};
+    });
+    var wt=$(".warn-target"); if(wt) wt.style.display=(costOn&&s.target<s.wk)?"":"none";
+    var al=$(".alert"), below=rows.filter(function(o){return !o.meets;});
+    if(costOn&&rows.length){
+      al.style.display="";
+      al.className="alert cost"+(below.length?"":" good");
+      al.innerHTML=below.length
+        ? "<b>"+below.length+" of "+rows.length+" plant"+(rows.length>1?"s are":" is")+" below your target SCR of "+fmt(s.target,2)+
+          ":</b> "+below.map(function(o){return esc(o.p.id);}).join(", ")+". For each, reduce the plant to its “max at target” size, or add the condenser shown."
+        : "<b>All plants meet your target SCR of "+fmt(s.target,2)+".</b> No condenser needed.";
+    } else { al.style.display="none"; }
+    resBody.innerHTML=rows.length?"":'<tr><td colspan="8" class="empty">Add a plant with its short-circuit MVA and rating to see results.</td></tr>';
+    var hide=costOn?"":' style="display:none"';
+    rows.slice().sort(function(a,b){return a.scr-b.scr;}).forEach(function(o){
+      var tr=document.createElement("tr");
+      tr.innerHTML="<td>"+esc(o.p.id)+'</td><td class="n">'+fmt(o.scr,2)+'</td><td><span class="pill '+o.f+'">'+NAME[o.f]+
+        '</span></td><td class="n">'+fmt(o.max,0)+'</td><td class="cost tc"'+hide+'>'+
+        (o.meets?'<span class="meet">✓ Meets</span>'
+          :'<span class="below">Below target</span><br>Max at target: <b>'+fmt(o.maxT,0)+' MW</b><br>or condenser: <b>'+fmt(o.cm,1)+' MVA</b>')+
+        '</td><td class="n cost"'+hide+">"+fmt(o.cm,1)+
+        '</td><td class="n cost"'+hide+'>'+fmt(o.after,2)+(o.fa!=="ok"?' <span class="pill '+o.fa+'">'+NAME[o.fa]+'</span>':'')+
+        '</td><td class="n cost"'+hide+">"+money(o.tot)+(o.complete?"":" *")+"</td>";
+      resBody.appendChild(tr);
+    });
+    var groups={}, gres=[];
+    r.plants.forEach(function(p){if(p.group){(groups[p.group]=groups[p.group]||[]).push(p);}});
+    groupsEl.innerHTML="";
+    Object.keys(groups).forEach(function(name){
+      var m=groups[name], a=0, den=0;
+      m.forEach(function(p){a+=p.scmva*p.mw;den+=p.mw;});
+      var w=a/(den*den), f=flag(w,s), minAlone=Math.min.apply(null,m.map(function(p){return p.scmva/p.mw;}));
+      gres.push({name:name,w:w,f:f});
+      var h='<div class="g"><b>Group '+esc(name)+"</b>";
+      m.forEach(function(p){var v=p.scmva/p.mw,fv=flag(v,s);h+='<div class="row"><span>'+esc(p.id)+' alone</span><span>'+fmt(v,2)+' <span class="pill '+fv+'">'+NAME[fv]+"</span></span></div>";});
+      h+='<div class="row tot"><span>Together (WSCR)</span><span>'+fmt(w,3)+' <span class="pill '+f+'">'+NAME[f]+"</span></span></div>";
+      if(m.length>1&&w<minAlone)h+="<p>Screened together, strength is "+Math.round(100*(1-w/minAlone))+"% lower than the weakest plant alone.</p>";
+      groupsEl.insertAdjacentHTML("beforeend",h+"</div>");
+    });
+    if(!gres.length)groupsEl.innerHTML='<p class="empty">Give two or more plants the same group label to screen them together.</p>';
+    last={s:s,items:rows.map(function(o){return {label:o.p.id+" "+fmt(o.scr,2),v:o.scr,f:o.f,g:false};})
+      .concat(gres.map(function(g){return {label:"Group "+g.name+" "+fmt(g.w,2),v:g.w,f:g.f,g:true};}))};
+    drawRuler();
+  }
+  // when shown inside an iframe, tell the host page our height so it can size the frame
+  function postHeight(){if(window.parent!==window){try{window.parent.postMessage({type:"scr-lite-height",height:document.documentElement.scrollHeight},"*");}catch(e){}}}
+  // strength ruler: dots on the bar, labels in non-overlapping lanes below
+  function drawRuler(){
+    if(!last)return;
+    var s=last.s, items=last.items.slice().sort(function(a,b){return a.v-b.v;});
+    // scale: grows with the data but is capped, so the weak bands stay readable; off-scale values get an arrow
+    var cap=Math.max(20,Math.ceil(s.wk*4));
+    var top=Math.min(cap,Math.max(10,Math.ceil(Math.max.apply(null,items.map(function(i){return i.v;}).concat([s.wk*2])))));
+    var pc=function(v){return Math.min(v/top*100,100);};
+    $(".band.vw").style.width=pc(s.vw)+"%"; $(".band.wk").style.left=pc(s.vw)+"%"; $(".band.wk").style.width=(pc(s.wk)-pc(s.vw))+"%";
+    $(".e-vw").style.left=pc(s.vw)+"%"; $(".e-wk").style.left=pc(s.wk)+"%";
+    $(".e-vw span").textContent=s.vw; $(".e-wk span").textContent=s.wk; $(".axis-max").textContent=top;
+    var tg=$(".e-tg"), costOn=$(".costbox").open;
+    if(costOn&&s.target!==s.wk){tg.style.display="block";tg.style.left=pc(s.target)+"%";
+      tg.querySelector("span").textContent="Target "+s.target+(s.target>top?" →":"");}
+    else tg.style.display="none";
+    var dots=$(".dots"), labs=$(".labels"); dots.innerHTML=""; labs.innerHTML="";
+    var W=$(".bar").getBoundingClientRect().width||600, LANE=20, GAP=10, lanes=[];
+    items.forEach(function(it){
+      var dot=document.createElement("div"); dot.className="dot "+it.f+(it.g?" grp":""); dot.style.left=pc(it.v)+"%"; dot.title=it.label; dots.appendChild(dot);
+      var lab=document.createElement("div"); lab.className="lab"; lab.textContent=it.label+(it.v>top?" \u2192":""); lab.style.visibility="hidden";
+      labs.appendChild(lab);
+      var w=lab.getBoundingClientRect().width||it.label.length*7, xpx=pc(it.v)/100*W;
+      var left=Math.max(0,Math.min(xpx-6,W-w)), lane=0;
+      while(lanes[lane]!==undefined&&lanes[lane]+GAP>left)lane++;
+      lanes[lane]=left+w;
+      lab.style.left=left+"px"; lab.style.top=(6+lane*LANE)+"px"; lab.style.visibility="";
+      var lead=document.createElement("div"); lead.className="lead"; lead.style.left=xpx+"px"; lead.style.top="-8px"; lead.style.height=(14+lane*LANE)+"px";
+      labs.insertBefore(lead,lab);
+    });
+    labs.style.height=(8+Math.max(1,lanes.length)*LANE)+"px";
+    postHeight();
+  }
+  var targetSet=false;
+  root.addEventListener("input",function(e){
+    var k=e.target.dataset&&e.target.dataset.k;
+    if(k==="target")targetSet=true;
+    if(k==="wk"&&!targetSet&&num(K("wk"),{}).ok)K("target").value=K("wk").value;
+    calc();
+  });
+  root.addEventListener("click",function(e){
+    var b=e.target.closest("button"); if(!b||!root.contains(b))return;
+    if(b.classList.contains("del")){b.closest(".plant").remove();calc();return;}
+    var act=b.dataset.act;
+    if(act==="add"){var row=addRow();calc();row.querySelector("input").focus();}
+    if(act==="example"){rowsEl.innerHTML="";EXAMPLE.forEach(addRow);K("cpm").value=100000;K("gtc").value=2000000;$(".costbox").open=true;calc();}
+    if(act==="clear"){rowsEl.innerHTML="";addRow();calc();}
+  });
+  $(".costbox").addEventListener("toggle",calc);
+  if(window.ResizeObserver){new ResizeObserver(function(){drawRuler();}).observe($(".bar"));
+    new ResizeObserver(postHeight).observe(root);}
+  else window.addEventListener("resize",drawRuler);
+  EXAMPLE.forEach(addRow);
+  calc();
+})();
+
+</script>
+</body>
+</html>

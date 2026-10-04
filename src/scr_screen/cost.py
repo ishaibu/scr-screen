@@ -83,6 +83,9 @@ class CostRow:
     poi_cost: float | None
     total_cost: float | None   # sum of priced parts; None if nothing could be priced
     complete: bool             # False if a needed part has a quantity but no price
+    meets_target: bool = True        # SCR already at or above the target SCR
+    max_at_target_mw: float = 0.0    # largest plant that meets the target without a condenser
+    scr_after: float = 0.0           # SCR with the condenser (= target if one is needed)
 
 
 def condenser_mva(plant_mw: float, scmva: float, target_scr: float, x_total_pu: float) -> tuple[float, float]:
@@ -132,7 +135,10 @@ def screen_costs(plants, inputs: CostInputs) -> list[CostRow]:
         poi = site.poi_cost if site else None
         priced = [v for v in (c_cost, gt_cost, poi) if v is not None]
         rows.append(CostRow(p.plant_id, p.scmva, p.scr, need, cmva, c_cost, gt_mi, gt_cost, poi,
-                            sum(priced) if priced else None, complete))
+                            sum(priced) if priced else None, complete,
+                            meets_target=p.scr >= inputs.target_scr,
+                            max_at_target_mw=p.scmva / inputs.target_scr,
+                            scr_after=inputs.target_scr if cmva > 0 else p.scr))
 
     rows.sort(key=lambda r: (r.total_cost is None, r.total_cost if r.total_cost is not None else 0,
                              r.condenser_mva, -r.scr))

@@ -115,3 +115,27 @@ def test_cli_rejects_unknown_site_bus(tmp_path, capsys):
     assert main(["scan", str(EXAMPLES / "ieee39_assumed.json"), "--plant-mw", "1500",
                  "--site-costs", str(sites)]) == 2
     assert "not in the scan" in capsys.readouterr().err
+
+
+def test_target_check_fields():
+    # IEEE bus 12 at 1500 MW, target 3: below target; max at target = 2832.43 / 3 = 944.1 MW
+    rows = screen_costs(result_for().plants, CostInputs(1500, 3.0, condenser_cost_per_mva=1e5, sites=SITES))
+    by = {r.bus_id: r for r in rows}
+    assert not by["Bus 12"].meets_target
+    assert by["Bus 12"].max_at_target_mw == pytest.approx(944.14, abs=0.01)
+    assert by["Bus 12"].scr_after == pytest.approx(3.0)
+    assert by["Bus 16"].meets_target and by["Bus 16"].scr_after == pytest.approx(8865 / 1500)
+
+
+def test_raising_target_flags_more_buses_below():
+    rows = screen_costs(result_for().plants, CostInputs(1500, 8.0, sites=SITES))
+    assert sum(not r.meets_target for r in rows) == 3   # 5.91 < 8 too
+
+
+def test_report_target_alert_and_columns():
+    r = result_for()
+    inputs = CostInputs(1500, 3.0, condenser_cost_per_mva=100_000, sites=SITES)
+    html = render_html(r, interactive={"plant_mw": 1500, "compare": None},
+                       cost={"rows": screen_costs(r.plants, inputs), "inputs": inputs})
+    assert "id='cost-alert'" in html and "1 of 3 bus(es) are below your target SCR of 3" in html
+    assert "Max at target: <b>944 MW</b>" in html and "SCR after condenser" in html
