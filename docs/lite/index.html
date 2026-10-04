@@ -114,6 +114,22 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 #scr-lite .tc b{font-weight:600}
 #scr-lite .tc .meet{color:var(--ok);font-weight:600}
 #scr-lite .tc .below{color:var(--wk);font-weight:600}
+
+/* results table: full width when cost columns are shown; cards on narrow widths (no horizontal scrolling) */
+#scr-lite.cost-on .results{grid-template-columns:1fr}
+#scr-lite .res th{line-height:1.3}
+@container lite (max-width:779px){
+  #scr-lite .res thead{display:none}
+  #scr-lite .res,#scr-lite .res tbody,#scr-lite .res tr{display:block;width:100%}
+  #scr-lite .res tr{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:0 0 10px}
+  #scr-lite .res td{display:flex;justify-content:space-between;align-items:baseline;gap:14px;border:0;padding:5px 0;text-align:right;width:100%}
+  #scr-lite .res td::before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:500;text-align:left;flex:0 0 auto}
+  #scr-lite .res td:first-child{font-weight:600;font-size:15px;border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:2px}
+  #scr-lite .res td.empty{display:block;text-align:left}
+  #scr-lite .res td.empty::before{content:none}
+  #scr-lite .tc{min-width:0}
+  #scr-lite .scroll{overflow-x:visible}
+}
 </style>
 </head>
 <body>
@@ -262,6 +278,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     msg.textContent=r.errs.length?("Check: "+r.errs.join(", ")+". Values must be numbers above 0 (costs and distances can be 0 or blank)."):"";
     if(s.wk===null||s.vw===null||!(s.vw<s.wk)||s.target===null||s.xd===null||s.xt===null)return;
     var costOn=$(".costbox").open;
+    root.classList.toggle("cost-on",costOn);
     $$(".cost").forEach(function(e){e.style.display=costOn?"":"none";});
     var x=s.xd+s.xt;
     var rows=r.plants.map(function(p){
@@ -287,13 +304,14 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     var hide=costOn?"":' style="display:none"';
     rows.slice().sort(function(a,b){return a.scr-b.scr;}).forEach(function(o){
       var tr=document.createElement("tr");
-      tr.innerHTML="<td>"+esc(o.p.id)+'</td><td class="n">'+fmt(o.scr,2)+'</td><td><span class="pill '+o.f+'">'+NAME[o.f]+
-        '</span></td><td class="n">'+fmt(o.max,0)+'</td><td class="cost tc"'+hide+'>'+
+      tr.innerHTML='<td data-label="Plant">'+esc(o.p.id)+'</td><td class="n" data-label="SCR">'+fmt(o.scr,2)+
+        '</td><td data-label="Flag"><span class="pill '+o.f+'">'+NAME[o.f]+
+        '</span></td><td class="n" data-label="Max size, no flag (MW)">'+fmt(o.max,0)+'</td><td class="cost tc" data-label="Target check"'+hide+'>'+
         (o.meets?'<span class="meet">✓ Meets</span>'
           :'<span class="below">Below target</span><br>Max at target: <b>'+fmt(o.maxT,0)+' MW</b><br>or condenser: <b>'+fmt(o.cm,1)+' MVA</b>')+
-        '</td><td class="n cost"'+hide+">"+fmt(o.cm,1)+
-        '</td><td class="n cost"'+hide+'>'+fmt(o.after,2)+(o.fa!=="ok"?' <span class="pill '+o.fa+'">'+NAME[o.fa]+'</span>':'')+
-        '</td><td class="n cost"'+hide+">"+money(o.tot)+(o.complete?"":" *")+"</td>";
+        '</td><td class="n cost" data-label="Condenser (MVA)"'+hide+">"+fmt(o.cm,1)+
+        '</td><td class="n cost" data-label="SCR after condenser"'+hide+'>'+fmt(o.after,2)+(o.fa!=="ok"?' <span class="pill '+o.fa+'">'+NAME[o.fa]+'</span>':'')+
+        '</td><td class="n cost" data-label="Total cost"'+hide+">"+money(o.tot)+(o.complete?"":" *")+"</td>";
       resBody.appendChild(tr);
     });
     var groups={}, gres=[];
