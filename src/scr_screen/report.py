@@ -69,6 +69,7 @@ h1{font-size:24px;margin:0}h2{font-size:17px;margin:32px 0 12px}
 .cost input{width:96px;padding:3px 6px;font:inherit;font-size:13px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg);text-align:right}
 .cost input.bad{border-color:var(--vw);outline:2px solid var(--vw)}
 .chart{position:relative;margin-top:6px}
+.scr-chart,.cmp{padding-top:20px}
 .row{display:grid;grid-template-columns:150px 1fr 120px;gap:10px;align-items:center;margin:6px 0;font-size:14px}
 .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .track{position:relative;height:22px;background:var(--card);border-radius:5px}
@@ -87,6 +88,7 @@ h1{font-size:24px;margin:0}h2{font-size:17px;margin:32px 0 12px}
 .gline{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
 .gline.total{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:600}
 .note{font-size:13px;color:var(--muted);margin-top:8px}
+.gbox .note{margin-top:6px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -169,7 +171,25 @@ function update(){
   var low=Math.min.apply(null,all)/mw, flagged=0;
   all.forEach(function(s){if(flag(s/mw)!=='ok') flagged++;});
   var lv=q('#card-low'); if(lv){lv.textContent=f(low,2);lv.className='v '+flag(low);}
-  var fv=q('#card-flag'); if(fv){fv.textContent=flagged+' of '+all.length;fv.className='v '+(flagged?'wk':'ok');}
+  // Groups screened together: every member has the slider's plant size.
+  var G={}, glow=null, gflag=0, ng=0;
+  qa('.gbox[data-g]').forEach(function(b){
+    var lines=qa('.gline[data-scmva]',b), n=lines.length, sum=0, mn=Infinity;
+    lines.forEach(function(l){var s=+l.dataset.scmva, v=s/mw; sum+=s; mn=Math.min(mn,v);
+      q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
+    var w=sum*mw/Math.pow(n*mw,2), c=flag(w), tl=q('.gline.total',b);
+    q('.val',tl).textContent=f(w,2); pill(q('.pill',tl),c);
+    var dn=q('.g-drop',b);
+    if(dn){if(w<mn){dn.textContent='Screened together, strength is '+(100*(1-w/mn)).toFixed(0)+'% lower than the weakest plant alone.';dn.style.display='';}
+      else{dn.textContent='';dn.style.display='none';}}
+    G[b.dataset.g]={w:w,c:c,n:n}; ng++; if(c!=='ok') gflag++;
+    if(!glow||w<glow.w) glow={w:w,c:c,name:b.dataset.g};});
+  qa('tr.gres').forEach(function(t){var d=G[t.dataset.g]; if(!d) return;
+    q('.c-grating',t).textContent=(d.n*mw).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+    q('.c-wscr',t).textContent=f(d.w,3); pill(q('.pill',t),d.c);});
+  var gv=q('#card-glow'); if(gv&&glow){gv.textContent=f(glow.w,2);gv.className='v '+glow.c;
+    var gn=q('#card-glow-name'); if(gn) gn.textContent='Group '+glow.name;}
+  var fv=q('#card-flag'); if(fv){fv.textContent=(flagged+gflag)+' of '+(all.length+ng);fv.className='v '+(flagged+gflag?'wk':'ok');}
   var rows=qa('.scr-chart .row');
   var mx=Math.max.apply(null,rows.map(function(r){return +r.dataset.scmva/mw;}).concat([S.wk*1.5]));
   rows.forEach(function(r){var v=+r.dataset.scmva/mw,c=flag(v),b=q('.bar',r);
@@ -358,7 +378,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     if result.groups:
         g_low = min(result.groups, key=lambda g: g.wscr)
         parts.append(_card("Lowest group WSCR", f"{g_low.wscr:.2f}", FLAG_STYLE[g_low.flag][0],
-                           escape(g_low.group)))
+                           f"<span id='card-glow-name'>Group {escape(g_low.group)}</span>",
+                           vid="card-glow"))
     total = len(result.plants) + len(result.groups)
     parts.append(_card("Flagged", f"{flagged} of {total}", "wk" if flagged else "ok", vid="card-flag"))
     parts.append("</div>")
@@ -451,6 +472,10 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         "<span>Dashed lines mark the thresholds</span></div>"
     )
 
+    # --- Groups: individual SCR vs WSCR -------------------------------------
+    if result.groups:
+        parts.append(_groups_section(result, live))
+
     # --- Method comparison (V4) ----------------------------------------------
     compare = (interactive or {}).get("compare")
     if live and compare:
@@ -480,32 +505,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     if cost:
         parts.append(_cost_section(cost, live))
 
-    # --- Groups: individual SCR vs WSCR -------------------------------------
-    if result.groups:
-        by_id = {p.plant_id: p for p in result.plants}
-        parts.append("<h2>Plants screened together (WSCR)</h2><div class='groups'>")
-        for g in result.groups:
-            cls, label = FLAG_STYLE[g.flag]
-            parts.append(f"<div class='gbox'><h3>Group {escape(g.group)}</h3>")
-            for pid in g.plant_ids:
-                p = by_id[pid]
-                pc, pl = FLAG_STYLE[p.flag]
-                parts.append(f"<div class='gline'><span>{escape(pid)} alone</span>"
-                             f"<span><span class='val'>{p.scr:.2f}</span>"
-                             f"<span class='pill {pc}'>{pl}</span></span></div>")
-            parts.append(f"<div class='gline total'><span>Together (WSCR)</span>"
-                         f"<span><span class='val'>{g.wscr:.2f}</span>"
-                         f"<span class='pill {cls}'>{label}</span></span></div>")
-            if g.wscr < g.min_individual_scr:
-                drop = 100 * (1 - g.wscr / g.min_individual_scr)
-                parts.append(f"<div class='note'>Screened together, strength is {drop:.0f}% lower "
-                             "than the weakest plant alone.</div>")
-            parts.append("</div>")
-        parts.append("</div>")
-
     # --- Results tables -----------------------------------------------------
     parts.append("<h2>Results</h2><div class='tablewrap'><table><thead><tr>"
-                 f"<th>{'Bus' if live else 'Plant'}</th><th>POI</th><th>Group</th><th class='n'>SCMVA</th>"
+                 f"<th>{'Bus' if live else 'Plant'}</th><th>{'Model index' if live else 'POI'}</th><th>Group</th><th class='n'>SCMVA</th>"
                  f"<th class='n'>Rating ({basis})</th><th class='n'>SCR</th><th>Flag</th>"
                  "<th class='n'>Max size, no flag</th></tr></thead><tbody>")
     for p in plants:
@@ -522,8 +524,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                      "<th>Flag</th></tr></thead><tbody>")
         for g in result.groups:
             cls, label = FLAG_STYLE[g.flag]
-            parts.append(f"<tr><td>{escape(g.group)}</td><td>{escape(', '.join(g.plant_ids))}</td>"
-                         f"<td class='n'>{g.total_rating:,.1f}</td><td class='n'>{g.wscr:.3f}</td>"
+            gattr = f" class='gres' data-g='{escape(g.group)}'" if live else ""
+            parts.append(f"<tr{gattr}><td>{escape(g.group)}</td><td>{escape(', '.join(g.plant_ids))}</td>"
+                         f"<td class='n c-grating'>{g.total_rating:,.1f}</td><td class='n c-wscr'>{g.wscr:.3f}</td>"
                          f"<td><span class='pill {cls}'>{label}</span></td></tr>")
         parts.append("</tbody></table></div>")
 
@@ -600,6 +603,47 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
             f"(<strong id='cmp-diff'>{diff}</strong> bus(es) at this plant size). Values shown as "
             f"{a_lab} / {b_lab}.</div><div class='chart cmp'>")
     return head + "".join(out) + "</div>"
+
+
+def _groups_section(result, live) -> str:
+    """Plants screened together: each plant alone vs the group's WSCR.
+
+    In live (bus-scan) reports every member has the slider's plant size, so the
+    browser recalculates WSCR = sum(SCMVA_i * P) / (n * P)**2 as the size changes.
+    """
+    by_id = {p.plant_id: p for p in result.plants}
+    out = ["<h2>Plants screened together (WSCR)</h2>"]
+    if live:
+        out.append("<div class='note' style='margin-top:-4px;margin-bottom:10px'>Each bus in a group "
+                   "gets a plant of the size above. WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the "
+                   "plants are fully interacting (electrically close); for buses far apart this is "
+                   "conservative.</div>")
+    out.append("<div class='groups'>")
+    for g in result.groups:
+        cls, label = FLAG_STYLE[g.flag]
+        gattr = f" data-g='{escape(g.group)}'" if live else ""
+        out.append(f"<div class='gbox'{gattr}><h3>Group {escape(g.group)}</h3>")
+        for pid in g.plant_ids:
+            p = by_id[pid]
+            pc, pl = FLAG_STYLE[p.flag]
+            attr = f" data-scmva='{p.scmva:.10g}'" if live else ""
+            out.append(f"<div class='gline'{attr}><span>{escape(pid)} alone</span>"
+                       f"<span><span class='val'>{p.scr:.2f}</span>"
+                       f"<span class='pill {pc}'>{pl}</span></span></div>")
+        out.append(f"<div class='gline total'><span>Together (WSCR)</span>"
+                   f"<span><span class='val'>{g.wscr:.2f}</span>"
+                   f"<span class='pill {cls}'>{label}</span></span></div>")
+        drop = 100 * (1 - g.wscr / g.min_individual_scr)
+        text = (f"Screened together, strength is {drop:.0f}% lower than the weakest plant alone."
+                if g.wscr < g.min_individual_scr else "")
+        if live:
+            hide = "" if text else " style='display:none'"
+            out.append(f"<div class='note g-drop'{hide}>{text}</div>")
+        elif text:
+            out.append(f"<div class='note'>{text}</div>")
+        out.append("</div>")
+    out.append("</div>")
+    return "".join(out)
 
 
 def _plain(v) -> str:

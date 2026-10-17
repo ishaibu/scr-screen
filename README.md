@@ -28,7 +28,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Feature | Details |
 |---|---|
 | SCR | Single plant at its point of interconnection (POI) |
-| WSCR | Groups of plants assumed fully interacting (ERCOT/NERC formulation) |
+| WSCR | Groups of plants assumed fully interacting (ERCOT/NERC formulation): in direct mode, and in network scans with `--groups` (live in the report as the plant size changes) |
 | Rating basis | MW (default) or MVA |
 | Short-circuit methods | Classical flat-start (1.0 pu) and IEC 60909 (via pandapower) |
 | Bus scan | SCR at every bus of a network for a hypothetical plant size |
@@ -45,7 +45,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 ## Try it without installing
 
 - **[SCR-Screen Lite](https://ishaibu.github.io/scr-screen/lite/)**: browser calculator. Type each plant's short-circuit MVA and MW to get SCR, flags, WSCR, the largest plant before a weak flag, and condenser cost. Runs entirely in your browser.
-- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs.
+- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show how WSCR drops when plants are screened together.
 
 ## Installation
 
@@ -99,7 +99,15 @@ scr-screen scan examples/ieee39_assumed.json --plant-mw 1500 --method iec60909
 
 **Reset all** returns to the values the report was created with. Invalid entries (e.g. 0 MW) are flagged and ignored.
 
-Run `scr-screen --help` or `scr-screen run --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`).
+**Screen nearby buses together (WSCR):** list buses that would host plants close together in a CSV with columns `bus,group`, and add `--groups`. Each bus in a group gets a plant of `--plant-mw`; the report shows each plant alone and the group's WSCR, and both update with the slider.
+
+```bash
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_example.csv --report groups.html --open
+```
+
+WSCR assumes the plants in a group are fully interacting, so group only buses that are electrically close; for buses far apart it is conservative.
+
+Run `scr-screen --help` or `scr-screen scan --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`).
 
 ## Use your own network
 

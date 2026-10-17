@@ -3,6 +3,24 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-17
+
+### Added
+- `scan --groups CSV` (columns `bus`, `group`): screen nearby buses together with WSCR in a network scan. Each grouped bus gets a plant of `--plant-mw`; results, CSV/JSON output and the report include each group.
+- Interactive scan reports recalculate group WSCR, flags, the "Lowest group WSCR" card and the flagged count live as the plant size and thresholds change.
+- Bundled example `ieee39_groups_example.csv` (G1: buses 11 and 13; G2: buses 16 and 17), copied by `scr-screen example`.
+- "File not found" errors now point to the `scr-screen-example` folder when the file is there (a common slip after `scr-screen example`).
+
+### Changed
+- Reports show the "Plants screened together (WSCR)" section right after the SCR chart.
+- Scan reports: the results column "POI" (which showed "pandapower index 29") is now "Model index" and shows the number only, with a note explaining it counts from 0. In scan CSV/JSON output, `poi_name` holds the same number.
+- The "Flagged" card counts groups as well as plants in interactive reports, matching the static count.
+- Interactive demo report regenerated with the two example groups.
+
+### Fixed
+- SCR-Screen Lite page (`docs/lite/`): on phones the calculator was about 24 px wider than the screen, so the page scrolled sideways. The calculator now fits the screen width.
+- Threshold labels ("2", "3") on the SCR and method-comparison charts no longer overlap the text above the chart.
+
 ## [0.1.0] - 2026-10-04
 
 First public release.

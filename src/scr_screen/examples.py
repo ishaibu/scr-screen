@@ -3,6 +3,7 @@
 ``scr-screen example`` copies them into a folder:
     ieee39_assumed.json        IEEE 39-bus network with ASSUMED short-circuit data (public test system)
     ieee39_sites_example.csv   site cost file with ILLUSTRATIVE costs for four candidate buses
+    ieee39_groups_example.csv  bus groups screened together with WSCR (scan --groups)
     plants_template.csv        direct-mode input with example plants
 """
 
@@ -13,7 +14,8 @@ from pathlib import Path
 
 from .metrics import InputError
 
-FILES = ("ieee39_assumed.json", "ieee39_sites_example.csv", "plants_template.csv")
+FILES = ("ieee39_assumed.json", "ieee39_sites_example.csv", "ieee39_groups_example.csv",
+         "plants_template.csv")
 
 GUIDE = """SCR-Screen example files
 =========================
@@ -22,6 +24,8 @@ ieee39_assumed.json       IEEE 39-bus test system with ASSUMED short-circuit dat
                           (generator X''d = 0.20 pu, R/X = 0.05, rating = max MW / 0.85).
                           Results demonstrate the tool, not any real system.
 ieee39_sites_example.csv  Site costs for four candidate buses. ILLUSTRATIVE values only.
+ieee39_groups_example.csv Two groups of nearby buses screened together with WSCR
+                          (G1: buses 11 and 13; G2: buses 16 and 17).
 plants_template.csv       Direct-mode input with example plants.
 
 Try, from inside this folder:
@@ -29,6 +33,7 @@ Try, from inside this folder:
   scr-screen run plants_template.csv --report direct.html --open
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report scan.html --open
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report cost.html --open --site-costs ieee39_sites_example.csv --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
+  scr-screen scan ieee39_assumed.json --plant-mw 1500 --report groups.html --open --groups ieee39_groups_example.csv
 
 Screening only: results do not replace interconnection studies.
 """

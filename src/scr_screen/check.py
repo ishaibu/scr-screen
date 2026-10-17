@@ -98,7 +98,7 @@ def check_network(net) -> CheckReport:
                 "contribution is excluded from short-circuit MVA, as NERC's SCR definition requires.")
     labels = [bus_label(net, b) for b in live]
     if len(set(labels)) != len(labels):
-        rep.add(INFO, "report", "Bus names are not unique, so reports label buses by pandapower index.")
+        rep.add(INFO, "report", "Bus names are not unique, so reports label buses by model index (position in the file, from 0).")
     if "geo" in net.bus.columns and net.bus.loc[live, "geo"].notna().all():
         rep.add(INFO, "report", "All buses have coordinates: the map will use them.")
     else:

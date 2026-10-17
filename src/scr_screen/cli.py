@@ -8,6 +8,7 @@ Examples:
     scr-screen convert case.m mynetwork.xlsx
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --open
     scr-screen sites-template mynetwork.xlsx sites.csv
+    scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --groups groups.csv
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --site-costs sites.csv \
         --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
     scr-screen --version
@@ -68,7 +69,7 @@ def _cmd_template(args) -> int:
 
 
 def _cmd_run(args) -> int:
-    plants, poi = read_plants_csv(args.csv)
+    plants, poi = read_plants_csv(_existing(args.csv, "Input file"))
     result = screen(plants, basis=args.basis, thresholds=_thresholds(args),
                     source="direct input", poi_names=poi)
     _print_summary(result)
@@ -84,7 +85,7 @@ def _cmd_scan(args) -> int:
     from .netmap import bus_label, render_network_svg
     from .network import scan_buses
 
-    path = Path(args.network)
+    path = _existing(args.network, "Network file")
     net = load_network(path)
     rep = check_network(net)
     if not rep.ready(args.method):
@@ -104,18 +105,28 @@ def _cmd_scan(args) -> int:
     labels = {r.bus: bus_label(net, r.bus) for r in rows}
     use_names = len(set(labels.values())) == len(labels)
     ids = {r.bus: f"Bus {labels[r.bus] if use_names else r.bus}" for r in rows}
-    plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw) for r in rows]
-    poi = {ids[r.bus]: f"pandapower index {r.bus}" for r in rows}
+    groups = _scan_groups(args, ids)
+    plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw, group=groups.get(ids[r.bus]))
+              for r in rows]
+    poi = {ids[r.bus]: str(r.bus) for r in rows}  # position in the network file (from 0)
     label = METHOD_LABELS[args.method]
     if args.method == "iec60909":
         label += f", case '{args.case}'"
     result = screen(plants, basis="MW", thresholds=thresholds,
                     source=f"network model ({path.name}), {label}", poi_names=poi)
+    result.groups.sort(key=lambda g: g.group)  # scan order is by SCR; list groups by name
     notes = [f"Bus scan: a hypothetical {args.plant_mw:g} MW plant was screened at each bus, "
-             "one at a time. Nearby plants should also be checked together with WSCR.",
-             ("Bus labels are the bus names in the network file; the POI column gives the "
-              "pandapower index." if use_names else
-              "Bus labels are pandapower indices (counting from 0); bus names were not unique.")]
+             "one at a time. "
+             + ("Buses listed in the groups file were also screened together with WSCR, "
+                "each with a plant of the same size; WSCR assumes the plants in a group are "
+                "fully interacting, so group only buses that are electrically close."
+                if groups else
+                "Nearby plants should also be checked together with WSCR (add --groups)."),
+             ("Bus labels are the bus names in the network file. The Model index column is "
+              "each bus's position in the file, counting from 0 (so Bus 30 can be index 29)."
+              if use_names else
+              "Bus labels are model indices (each bus's position in the network file, counting from 0); "
+              "bus names were not unique.")]
     notes += [n for n in calc_notes if "excluded" in n]
 
     cost = _cost_screening(args, result, thresholds)
@@ -148,6 +159,35 @@ def _cmd_scan(args) -> int:
     return 0
 
 
+def _scan_groups(args, ids) -> dict[str, str]:
+    """{plant_id: group} from --groups, checked against the scanned buses."""
+    if not args.groups:
+        return {}
+    from .io import read_bus_groups_csv
+
+    by_label = {pid[4:]: pid for pid in ids.values()}
+    raw = read_bus_groups_csv(_existing(args.groups, "Groups file"))
+    unknown = [b for b in raw if b not in by_label]
+    if unknown:
+        raise InputError(f"Groups file lists bus(es) not in the scan: {', '.join(unknown[:8])}. "
+                         "Use the bus labels shown in the scan report.")
+    return {by_label[b]: g for b, g in raw.items()}
+
+
+def _existing(path, what: str) -> Path:
+    """Return path if it exists; otherwise raise a clear error, with a hint when the
+    file is in the example folder (a common slip after 'scr-screen example')."""
+    p = Path(path)
+    if p.exists():
+        return p
+    hint = ""
+    alt = Path("scr-screen-example") / p
+    if not p.is_absolute() and alt.exists():
+        hint = (f"\nIt is in the scr-screen-example folder: run  cd scr-screen-example  first, "
+                f"or use  {alt}")
+    raise InputError(f"{what} not found: {p}{hint}")
+
+
 def _cost_screening(args, result, thresholds):
     """Build cost screening if any cost option was given; else None."""
     wanted = any([args.cost, args.site_costs, args.condenser_cost_per_mva is not None,
@@ -156,7 +196,7 @@ def _cost_screening(args, result, thresholds):
         return None
     from .cost import CostInputs, read_site_costs_csv, screen_costs
 
-    sites = read_site_costs_csv(args.site_costs) if args.site_costs else {}
+    sites = read_site_costs_csv(_existing(args.site_costs, "Site cost file")) if args.site_costs else {}
     known = {p.plant_id[4:] if p.plant_id.startswith("Bus ") else p.plant_id for p in result.plants}
     unknown = [b for b in sites if b not in known]
     if unknown:
@@ -193,7 +233,7 @@ def _cmd_check(args) -> int:
     from .check import check_network
     from .loaders import load_network
 
-    path = Path(args.network)
+    path = _existing(args.network, "Network file")
     rep = check_network(load_network(path))
     _print_check(rep, path.name)
     return 0 if (rep.ready("classical") or rep.ready("iec60909")) else 2
@@ -212,7 +252,7 @@ def _print_check(rep, name):
 def _cmd_convert(args) -> int:
     from .loaders import load_network, save_network
 
-    net = load_network(args.source)
+    net = load_network(_existing(args.source, "Network file"))
     out = save_network(net, args.target)
     print(f"Converted {Path(args.source).name} -> {out}")
     print("Fill in any missing short-circuit columns (gen: xdss_pu, sn_mva, rdss_ohm, cos_phi, vn_kv; "
@@ -225,7 +265,7 @@ def _cmd_sites_template(args) -> int:
     from .loaders import load_network
     from .netmap import bus_label
 
-    net = load_network(args.network)
+    net = load_network(_existing(args.network, "Network file"))
     live = [int(b) for b in net.bus.index[net.bus["in_service"]]]
     labels = [bus_label(net, b) for b in live]
     if len(set(labels)) != len(labels):
@@ -345,6 +385,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="IEC 60909 case (default max; ignored for classical)")
     s.add_argument("--no-compare", action="store_true",
                    help="skip the second method (the report's method comparison chart)")
+    s.add_argument("--groups", metavar="CSV",
+                   help="screen buses together with WSCR: CSV with columns bus, group "
+                        "(each bus gets a plant of --plant-mw)")
     g = s.add_argument_group("cost screening (optional; all costs are your own inputs)")
     g.add_argument("--cost", action="store_true", help="add cost screening (condenser sizing) to the scan")
     g.add_argument("--site-costs", metavar="CSV", help="per-bus distance_mi and poi_cost_usd "

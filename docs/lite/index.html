@@ -10,7 +10,7 @@
 #scr-lite{--ink:#12263a;--muted:#5b6b7b;--line:#d8e0e7;--paper:#fff;--panel:#f4f7f9;--accent:#0a9396;--accent-d:#077a7d;
 --vw:#c8321f;--wk:#c76a00;--ok:#11804f;--vwbg:#fdecea;--wkbg:#fff4e2;--okbg:#e8f6ee;
 --f:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-container-type:inline-size;container-name:lite;display:block;width:100%;max-width:1180px;margin:0 auto;
+container-type:inline-size;container-name:lite;display:block;box-sizing:border-box;width:100%;max-width:1180px;margin:0 auto;
 background:var(--paper);color:var(--ink);font:16px/1.55 var(--f);font-variant-numeric:tabular-nums;text-align:left;
 padding:22px clamp(12px,3vw,24px) 28px;-webkit-text-size-adjust:100%}
 @media (prefers-color-scheme:dark){#scr-lite[data-scheme=auto]{--ink:#e8eef3;--muted:#9db0c0;--line:#2c3d4d;--paper:#0f1b26;--panel:#162533;--vwbg:#3a1712;--wkbg:#3a2a0d;--okbg:#0f3322}}
@@ -92,7 +92,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 #scr-lite .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 #scr-lite .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
 #scr-lite .pill.vw{color:var(--vw);background:var(--vwbg)}#scr-lite .pill.wk{color:var(--wk);background:var(--wkbg)}#scr-lite .pill.ok{color:var(--ok);background:var(--okbg)}
-#scr-lite .results{display:grid;grid-template-columns:1fr;gap:4px 28px}
+#scr-lite .results{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 28px}
 @container lite (min-width:820px){#scr-lite .results{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
 #scr-lite .scroll{overflow-x:auto}
 #scr-lite .groups{display:grid;gap:10px}
@@ -116,7 +116,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 #scr-lite .tc .below{color:var(--wk);font-weight:600}
 
 /* results table: full width when cost columns are shown; cards on narrow widths (no horizontal scrolling) */
-#scr-lite.cost-on .results{grid-template-columns:1fr}
+#scr-lite.cost-on .results{grid-template-columns:minmax(0,1fr)}
 #scr-lite .res th{line-height:1.3}
 @container lite (max-width:779px){
   #scr-lite .res thead{display:none}
@@ -130,6 +130,9 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
   #scr-lite .tc{min-width:0}
   #scr-lite .scroll{overflow-x:visible}
 }
+
+/* phone cards: the multi-line target check stacks under its label instead of running off the edge */
+@container lite (max-width:779px){#scr-lite .res td.tc{display:block;text-align:right}#scr-lite .res td.tc::before{float:left;margin-right:14px}}
 </style>
 </head>
 <body>

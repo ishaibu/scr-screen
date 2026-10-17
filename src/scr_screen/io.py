@@ -87,6 +87,49 @@ def read_plants_csv(path: str | Path) -> tuple[list[Plant], dict[str, str]]:
     return plants, poi_names
 
 
+def read_bus_groups_csv(path: str | Path) -> dict[str, str]:
+    """Read bus groups for a network scan: columns bus, group.
+
+    Buses that share a group are screened together with WSCR, each with a
+    plant of the scan's plant size. The bus column can hold the bus label as
+    shown in reports ("12") or with the prefix ("Bus 12"). A bus can belong
+    to one group only.
+
+    Returns:
+        {bus label: group name}
+    """
+    path = Path(path)
+    if not path.exists():
+        raise InputError(f"Groups file not found: {path}")
+    groups: dict[str, str] = {}
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise InputError(f"{path.name} is empty.")
+        reader.fieldnames = [h.strip().lower() for h in reader.fieldnames]
+        missing = [c for c in ("bus", "group") if c not in reader.fieldnames]
+        if missing:
+            raise InputError(f"{path.name} is missing column(s): {', '.join(missing)}. "
+                             "Required: bus, group.")
+        for row_no, raw in enumerate(reader, start=2):
+            row = {k: (v or "").strip() for k, v in raw.items() if k}
+            if not any(row.values()):
+                continue
+            bus, group = row.get("bus", ""), row.get("group", "")
+            if not bus:
+                raise InputError(f"Row {row_no}: bus is empty.")
+            if not group:
+                raise InputError(f"Row {row_no}: group is empty for bus '{bus}'.")
+            key = bus[4:].strip() if bus.lower().startswith("bus ") else bus
+            if key in groups:
+                raise InputError(f"Row {row_no}: bus '{bus}' appears more than once "
+                                 "(a bus can belong to one group only).")
+            groups[key] = group
+    if not groups:
+        raise InputError(f"{path.name} has a header but no rows.")
+    return groups
+
+
 def write_results_json(result: ScreeningResult, path: str | Path) -> Path:
     """Write the full result (metadata, plants, groups) as JSON."""
     path = Path(path)

@@ -139,6 +139,7 @@ Required short-circuit data:
 ### 5.3 Cost screening
 
 - **Command options:** `--condenser-cost-per-mva`, `--gen-tie-cost-per-mile`, `--target-scr` (default: weak threshold), `--condenser-xdss` (default 0.20), `--condenser-xt` (default 0.10).
+- **Groups file** (`scan --groups`): columns `bus`, `group`. Each listed bus gets a plant of `--plant-mw`; buses sharing a group are screened together with WSCR. A bus can belong to one group only.
 - **Site file** (`--site-costs`): columns `bus`, `distance_mi`, `poi_cost_usd`. Only listed buses are costed (Decision D10).
 
 ### 5.4 Report what-if inputs (scan reports)
@@ -157,7 +158,7 @@ Plant size; weak and very-weak thresholds; and, with cost screening, target SCR,
    - method comparison (classical vs IEC 60909)
    - largest-plant chart
    - cost screening table
-   - WSCR group comparison (direct mode)
+   - WSCR group comparison (direct mode, and network scans with `--groups`; placed after the SCR chart)
    - results tables
    - method and assumptions, and the disclaimer
 2. **Results CSV/JSON** (`--out`), including the largest plant before a weak flag.
