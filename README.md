@@ -23,7 +23,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 - **Method choice changes answers.** SCR-Screen supports both the classical flat-start method (common U.S. planning practice) and IEC 60909, and records which one produced each result.
 - **Transparent and reproducible.** Open formulas, documented assumptions, automated tests, and a public [verification record](docs/verification.md).
 
-## Features (v0.1)
+## Features
 
 | Feature | Details |
 |---|---|
@@ -218,7 +218,7 @@ Full details: [design specification](docs/design-spec.md).
 
 - SCR-based metrics assume **grid-following** inverters and do not replace the inverter manufacturer's minimum SCR.
 - WSCR assumes the plants in a group are fully interacting.
-- The classical method (v0.1) ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
+- The classical method ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
 - Real transmission models are often restricted (e.g. CEII in the U.S.). SCR-Screen ships only public test data; users run it on their own models.
 - Cost screening is screening-level only and excludes network upgrades; all costs are user inputs.
 
@@ -249,7 +249,7 @@ If you use SCR-Screen in your work, please cite it:
 
 > Ibrahim, S. (2026). *SCR-Screen: open-source short-circuit ratio screening for inverter-based resource interconnection* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23130832
 
-This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
+This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.2.0: 10.5281/zenodo.23441700; v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
 
 ## License and author
 
