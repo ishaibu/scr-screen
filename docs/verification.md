@@ -14,6 +14,7 @@ real project.
 | ID | Date | What was checked | Method | Result |
 |---|---|---|---|---|
 | V1 | 2026-09-29 | IEEE 39-bus, bus 12, classical SCMVA | Hand calculation (two-port reduction) | Match |
+| V2 | 2026-10-17 | IEEE 39-bus, group G1 (buses 11 + 13), WSCR | Hand calculation from reported SCMVA | Match |
 
 ---
 
@@ -71,3 +72,57 @@ by hand through its two transformers:
   with pandapower's independent calculation).
 - A comparison with an independent commercial or open-source tool is
   planned before the public release.
+
+---
+
+## V2 — IEEE 39-bus, group G1 WSCR (buses 11 and 13)
+
+**Date:** 2026-10-17
+**Checked by:** Shaibu Ibrahim, P.E.
+**Tool version:** 0.2.0
+**Case:** `scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_example.csv`,
+with the documented assumed short-circuit data used in V1.
+
+### Why this group
+Buses 11 and 13 each pass the single-plant screen at 1,500 MW (SCR 4.48 and
+4.31), but the group is flagged weak. That is exactly the case WSCR exists to
+catch, so it is the most useful one to confirm by hand.
+
+### Method
+WSCR for plants assumed fully interacting (ERCOT/NERC formulation):
+
+    WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)²
+
+The short-circuit MVA values were taken from the SCR-Screen report (Results
+table, SCMVA column). Their accuracy is not part of this check (see below).
+
+### Data
+
+| Bus | SCMVA (from report) | Plant P (MW) | SCMVA × P |
+|---|---|---|---|
+| 11 | 6,712.87 | 1,500 | 10,069,310 |
+| 13 | 6,470.21 | 1,500 | 9,705,308 |
+| **Total** | | **3,000** | **19,774,618** |
+
+### Results
+
+| Quantity | Hand calculation | SCR-Screen |
+|---|---|---|
+| (ΣP)² | 9,000,000 | — |
+| WSCR at 1,500 MW | 19,774,618 ÷ 9,000,000 = **2.197** | 2.197 |
+| Flag (weak below 3, very weak below 2) | Weak | Weak |
+| WSCR at 1,000 MW (slider) | 13,183.08 × 1,000 ÷ 2,000² = **3.296** | 3.30 (report shows 2 decimals) |
+
+**Outcome:** Match.
+
+### What this proves
+- The WSCR formula is applied correctly to a network scan group.
+- The live browser recalculation (slider) gives the same WSCR as the hand
+  calculation at a second plant size.
+
+### What this does not prove
+- The SCMVA values themselves. For the classical method these rest on the
+  network matrix checked in V1 and test M1.
+- That buses 11 and 13 are fully interacting. WSCR assumes they are; for
+  buses electrically far apart the result is conservative. Methods that use
+  the network's mutual impedances (for example CSCR) are planned.
