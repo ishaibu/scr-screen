@@ -34,6 +34,8 @@ Try, from inside this folder:
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report scan.html --open
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report cost.html --open --site-costs ieee39_sites_example.csv --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report groups.html --open --groups ieee39_groups_example.csv
+  scr-screen interactions ieee39_assumed.json --buses 4,11,12,13,16,17,26,28,29 --out my_groups.csv
+  scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups my_groups.csv --n1 --report full.html --open
 
 Screening only: results do not replace interconnection studies.
 """

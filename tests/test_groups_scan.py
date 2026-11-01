@@ -70,7 +70,7 @@ def test_live_report_has_group_data_and_counts_groups(tmp_path):
     assert main(["scan", NET, "--plant-mw", "1500", "--groups", GROUPS, "--report", str(rep),
                  "--no-compare"]) == 0
     html = rep.read_text(encoding="utf-8")
-    assert "Plants screened together (WSCR)" in html
+    assert "Plants screened together (WSCR, CSCR and SCRIF)" in html
     assert "class='gbox' data-g='G1'" in html and "class='gres' data-g='G2'" in html
     assert "id='card-glow'" in html and "6 of 41" in html
     assert "class='note g-drop'" in html

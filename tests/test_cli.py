@@ -77,7 +77,7 @@ def test_scan_ieee39_classical(tmp_path, capsys):
     assert "1.888" in weakest and "very weak" in weakest and "944.1" in weakest
     html = (tmp_path / "scan.html").read_text(encoding="utf-8")
     assert "classical flat-start" in html and "hypothetical 1500 MW plant" in html
-    assert "<svg class='netmap'" in html and "network&#x27;s own coordinates" in html
+    assert "<svg class='netmap'" in html and "one-line drawing of this network" in html
     assert "Largest plant before a weak flag" in html
 
 

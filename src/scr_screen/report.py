@@ -106,6 +106,12 @@ animation:pop .45s ease-out both;transition:fill .3s}
 .netmap .node.vw{fill:var(--vw)}.netmap .node.wk{fill:var(--wk)}.netmap .node.ok{fill:var(--ok)}.netmap .node.na{fill:var(--muted)}
 .netmap .halo{fill:none;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pulse 1.8s ease-out 1.2s infinite both;pointer-events:none}
 .netmap .halo.vw{stroke:var(--vw)}.netmap .halo.wk{stroke:var(--wk)}
+.netmap .hz{stroke:none;transition:fill .3s,opacity .3s}.netmap .hz.vw{fill:var(--vw);opacity:.55}
+.netmap .hz.wk{fill:var(--wk);opacity:.45}.netmap .hz.ok{fill:var(--ok);opacity:.16}
+.netmap.noheat .heat{display:none}
+.mapctl{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;font-size:13px;margin:0 0 8px}
+.mapctl select{font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.gline.sub>span:first-child{color:var(--muted)}
 .netmap .lbl{font-size:12px;font-weight:600;fill:var(--fg);paint-order:stroke;stroke:var(--bg);stroke-width:3px;animation:fade .5s ease 1s both}
 .cmp .track{background:transparent;border-bottom:1px solid var(--line);border-radius:0}
 .cmp .seg{position:absolute;top:10px;height:2px;background:var(--muted);transition:left .45s,width .45s}
@@ -174,7 +180,11 @@ function update(){
   // Groups screened together: every member has the slider's plant size.
   var G={}, glow=null, gflag=0, ng=0;
   qa('.gbox[data-g]').forEach(function(b){
-    var lines=qa('.gline[data-scmva]',b), n=lines.length, sum=0, mn=Infinity;
+    var lines=qa('.gline.mem[data-scmva]',b), n=lines.length, sum=0, mn=Infinity;
+    qa('.gline.scrif',b).forEach(function(l){var v=+l.dataset.s/(mw*(1+(+l.dataset.ifsum)));
+      q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
+    qa('.gline.cscr',b).forEach(function(l){var v=+l.dataset.cs/(+l.dataset.n*mw);
+      q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
     lines.forEach(function(l){var s=+l.dataset.scmva, v=s/mw; sum+=s; mn=Math.min(mn,v);
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
     var w=sum*mw/Math.pow(n*mw,2), c=flag(w), tl=q('.gline.total',b);
@@ -185,10 +195,19 @@ function update(){
     G[b.dataset.g]={w:w,c:c,n:n}; ng++; if(c!=='ok') gflag++;
     if(!glow||w<glow.w) glow={w:w,c:c,name:b.dataset.g};});
   qa('tr.gres').forEach(function(t){var d=G[t.dataset.g]; if(!d) return;
+    var cc=q('.c-cscr',t); if(cc&&t.dataset.cs){var v=+t.dataset.cs/(d.n*mw);cc.querySelector('.val').textContent=f(v,3);pill(q('.c-cscr .pill',t),flag(v));}
     q('.c-grating',t).textContent=(d.n*mw).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
     q('.c-wscr',t).textContent=f(d.w,3); pill(q('.pill',t),d.c);});
   var gv=q('#card-glow'); if(gv&&glow){gv.textContent=f(glow.w,2);gv.className='v '+glow.c;
     var gn=q('#card-glow-name'); if(gn) gn.textContent='Group '+glow.name;}
+  var n1v=qa('tr.res[data-n1]').map(function(t){return +t.dataset.n1/mw;});
+  var nc=q('#card-n1'); if(nc&&n1v.length){var m=Math.min.apply(null,n1v);nc.textContent=f(m,2);nc.className='v '+flag(m);}
+  qa('tr.res').forEach(function(t){
+    var c1=q('.c-n1',t); if(c1&&t.dataset.n1){var v=+t.dataset.n1/mw;q('.val',c1).textContent=f(v,3);pill(q('.pill',c1),flag(v));}
+    var c2=q('.c-scrif',t); if(c2&&t.dataset.ifsum){var v2=+t.dataset.scmva/(mw*(1+(+t.dataset.ifsum)));q('.val',c2).textContent=f(v2,3);pill(q('.pill',c2),flag(v2));}
+    var c3=q('.c-escr',t); if(c3&&t.dataset.qc!==undefined){var v3=(+t.dataset.scmva-(+t.dataset.qc))/mw;c3.textContent=f(v3,3);}});
+  qa('tr.n1row').forEach(function(t){var v=+t.dataset.n1/mw;q('.val',t).textContent=f(v,3);pill(q('.pill',t),flag(v));
+    var vi=+t.dataset.scmva/mw;q('.k-int',t).textContent=f(vi,3);});
   var fv=q('#card-flag'); if(fv){fv.textContent=(flagged+gflag)+' of '+(all.length+ng);fv.className='v '+(flagged+gflag?'wk':'ok');}
   var rows=qa('.scr-chart .row');
   var mx=Math.max.apply(null,rows.map(function(r){return +r.dataset.scmva/mw;}).concat([S.wk*1.5]));
@@ -205,10 +224,12 @@ function update(){
   var labels=q('.netmap .labels');
   if(labels){while(labels.firstChild) labels.removeChild(labels.firstChild);}
   var gs=qa('.netmap g.bus[data-scmva]');
-  var hi=gs.filter(function(g){return flag(+g.dataset.scmva/mw)!=='ok';})
-    .sort(function(a,b){return a.dataset.scmva-b.dataset.scmva;}).slice(0,cfg.maxLabels||8);
+  var mapS=function(e){return (S.mapN1&&e.dataset.n1)?+e.dataset.n1:+e.dataset.scmva;};
+  var hi=gs.filter(function(g){return flag(mapS(g)/mw)!=='ok';})
+    .sort(function(a,b){return mapS(a)-mapS(b);}).slice(0,cfg.maxLabels||8);
+  qa('.netmap .heat circle[data-scmva]').forEach(function(c){c.setAttribute('class','hz '+flag(mapS(c)/mw));});
   gs.forEach(function(g){
-    var v=+g.dataset.scmva/mw,c=flag(v),big=c!=='ok',x=+g.dataset.x,y=+g.dataset.y,top=hi.indexOf(g)>=0;
+    var v=mapS(g)/mw,c=flag(v),big=c!=='ok',x=+g.dataset.x,y=+g.dataset.y,top=hi.indexOf(g)>=0;
     var sh=q('.node',g); sh.setAttribute('class','node '+c);
     if(g.dataset.src==='1'){var s=big?15:12;sh.setAttribute('x',f(x-s/2,1));sh.setAttribute('y',f(y-s/2,1));
       sh.setAttribute('width',s);sh.setAttribute('height',s);} else {sh.setAttribute('r',big?9:6);}
@@ -216,7 +237,7 @@ function update(){
     if(top){if(!h){h=document.createElementNS(SVG,'circle');h.setAttribute('cx',x);h.setAttribute('cy',y);
       h.setAttribute('r',9);g.insertBefore(h,g.firstChild);} h.setAttribute('class','halo '+c);}
     else if(h){g.removeChild(h);}
-    q('title',g).textContent='Bus '+g.dataset.label+': SCR '+f(v,2)+' ('+WORD[c]+')'+(g.dataset.src==='1'?' \u00b7 generator/source bus':'');
+    q('title',g).textContent='Bus '+g.dataset.label+': '+(S.mapN1&&g.dataset.n1?'N-1 SCR ':'SCR ')+f(v,2)+' ('+WORD[c]+')'+(g.dataset.src==='1'?' \u00b7 generator/source bus':'');
     if(top&&labels){var t=document.createElementNS(SVG,'text');t.setAttribute('x',f(x+12,1));t.setAttribute('y',f(y-9,1));
       t.setAttribute('class','lbl');t.textContent='Bus '+g.dataset.label+' \u00b7 '+f(v,2);labels.appendChild(t);}
   });
@@ -314,6 +335,13 @@ if(body){
   body.addEventListener('change',function(e){if(e.target.classList&&(e.target.classList.contains('e-dist')||e.target.classList.contains('e-poi'))) costUpdate(true);});
 }
 
+var ht=q('#heat-toggle'), nm=q('.netmap');
+if(ht&&nm) ht.addEventListener('change',function(){nm.classList.toggle('noheat',!ht.checked);});
+var mm=q('#map-mode');
+if(mm) mm.addEventListener('change',function(){S.mapN1=mm.value==='n1';
+  var lt=q('#map-mode-note'); if(lt) lt.textContent=S.mapN1?'Colors show each bus\u2019s worst single-outage (N-1) SCR.':'Colors show SCR with all lines and transformers in service.';
+  update();});
+
 var reset=q('#mw-reset');
 if(reset) reset.addEventListener('click',function(){init();
   range.value=S.mw; box.value=S.mw;
@@ -382,6 +410,11 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                            vid="card-glow"))
     total = len(result.plants) + len(result.groups)
     parts.append(_card("Flagged", f"{flagged} of {total}", "wk" if flagged else "ok", vid="card-flag"))
+    n1p = [p for p in result.plants if p.n1_scr is not None]
+    if n1p:
+        w = min(n1p, key=lambda p: p.n1_scr)
+        parts.append(_card("Lowest N-1 SCR", f"{w.n1_scr:.2f}", FLAG_STYLE[_flag_word(w.n1_scr, vw, wk)][0],
+                           escape(w.plant_id), vid="card-n1"))
     parts.append("</div>")
 
     # --- What-if inputs: plant size slider (V3), thresholds, cost rates --------
@@ -427,6 +460,15 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     if network_svg or network_note:
         parts.append("<h2>Network map</h2>")
         if network_svg:
+            has_n1 = any(p.n1_scr is not None for p in result.plants)
+            if live:
+                ctl = ["<div class='mapctl'><label><input type='checkbox' id='heat-toggle' checked> Heat-map shading</label>"]
+                if has_n1:
+                    ctl.append("<label>Color by <select id='map-mode'><option value='intact'>Intact network</option>"
+                               "<option value='n1'>Worst single outage (N-1)</option></select></label>"
+                               "<span id='map-mode-note' class='note' style='margin:0'>Colors show SCR with all lines "
+                               "and transformers in service.</span>")
+                parts.append("".join(ctl) + "</div>")
             parts.append(f"<div class='mapwrap'>{network_svg}</div>")
             parts.append(
                 "<div class='legend'>"
@@ -436,7 +478,9 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                 "<span><span class='sw' style='background:var(--muted);border-radius:2px'></span>"
                 "Square = generator or grid source bus</span>"
                 "<span>Dashed line = transformer</span><span>Pulsing ring and label = weakest flagged buses (up to 8)</span>"
-                "<span>Hover over a bus for details</span></div>"
+                "<span>Hover over a bus for details</span>"
+                "<span>Shading spreads each bus's flag color so weak areas stand out; strength is calculated "
+                "only at buses</span></div>"
             )
         if network_note:
             parts.append(f"<div class='note'>{escape(network_note)}</div>")
@@ -474,7 +518,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
 
     # --- Groups: individual SCR vs WSCR -------------------------------------
     if result.groups:
-        parts.append(_groups_section(result, live))
+        parts.append(_groups_section(result, live, interactive or {}))
 
     # --- Method comparison (V4) ----------------------------------------------
     compare = (interactive or {}).get("compare")
@@ -501,33 +545,66 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     if cap_rows_note:
         parts.append(f"<div class='note'>{cap_rows_note}</div>")
 
+    # --- N-1 worst case ------------------------------------------------------
+    if has_n1_any(result):
+        parts.append(_n1_section(result, live, vw, wk))
+
     # --- Interconnection cost screening ----------------------------------------
     if cost:
         parts.append(_cost_section(cost, live))
 
     # --- Results tables -----------------------------------------------------
+    ext = interactive or {}
+    has_scrif = any(p.scrif is not None for p in plants)
+    has_escr = any(p.escr is not None for p in plants)
+    has_n1 = any(p.n1_scr is not None for p in plants)
     parts.append("<h2>Results</h2><div class='tablewrap'><table><thead><tr>"
                  f"<th>{'Bus' if live else 'Plant'}</th><th>{'Model index' if live else 'POI'}</th><th>Group</th><th class='n'>SCMVA</th>"
                  f"<th class='n'>Rating ({basis})</th><th class='n'>SCR</th><th>Flag</th>"
-                 "<th class='n'>Max size, no flag</th></tr></thead><tbody>")
+                 "<th class='n'>Max size, no flag</th>"
+                 + ("<th class='n'>SCRIF</th>" if has_scrif else "")
+                 + ("<th class='n'>ESCR</th>" if has_escr else "")
+                 + ("<th class='n'>N-1 SCR</th><th>Worst outage</th>" if has_n1 else "")
+                 + "</tr></thead><tbody>")
     for p in plants:
         cls, label = FLAG_STYLE[p.flag]
-        parts.append(f"<tr class='res'{dscm(p)}><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
+        attrs = dscm(p)
+        if live and p.plant_id in ext.get("ifsum", {}):
+            attrs += f" data-ifsum='{ext['ifsum'][p.plant_id]:.10g}'"
+        if live and p.plant_id in ext.get("n1", {}):
+            attrs += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
+        if live and p.plant_id in ext.get("qc", {}):
+            attrs += f" data-qc='{ext['qc'][p.plant_id]:.10g}'"
+        cells = ""
+        if has_scrif:
+            cells += ("<td class='n c-scrif'>" + (_val_pill(p.scrif, vw, wk, 3) if p.scrif is not None else "") + "</td>")
+        if has_escr:
+            cells += f"<td class='n c-escr'>{'' if p.escr is None else f'{p.escr:.3f}'}</td>"
+        if has_n1:
+            cells += (f"<td class='n c-n1'>{_val_pill(p.n1_scr, vw, wk, 3) if p.n1_scr is not None else ''}</td>"
+                      f"<td>{escape(p.n1_outage or '')}</td>")
+        parts.append(f"<tr class='res'{attrs}><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
                      f"<td>{escape(p.group or '')}</td><td class='n'>{p.scmva:,.1f}</td>"
                      f"<td class='n c-rating'>{p.rating:,.1f}</td><td class='n c-scr'>{p.scr:.3f}</td>"
                      f"<td><span class='pill {cls}'>{label}</span></td>"
-                     f"<td class='n c-max'>{p.max_rating_no_flag:,.1f}</td></tr>")
+                     f"<td class='n c-max'>{p.max_rating_no_flag:,.1f}</td>{cells}</tr>")
     parts.append("</tbody></table></div>")
     if result.groups:
+        has_cscr = any(g.cscr is not None for g in result.groups)
         parts.append("<div class='tablewrap' style='margin-top:14px'><table><thead><tr>"
                      f"<th>Group</th><th>Plants</th><th class='n'>Total rating ({basis})</th><th class='n'>WSCR</th>"
-                     "<th>Flag</th></tr></thead><tbody>")
+                     "<th>Flag</th>" + ("<th class='n'>CSCR</th>" if has_cscr else "") + "</tr></thead><tbody>")
         for g in result.groups:
             cls, label = FLAG_STYLE[g.flag]
             gattr = f" class='gres' data-g='{escape(g.group)}'" if live else ""
+            if live and g.group in ext.get("cscmva", {}):
+                gattr += f" data-cs='{ext['cscmva'][g.group]:.10g}'"
+            cs_cell = ""
+            if has_cscr:
+                cs_cell = "<td class='n c-cscr'>" + (_val_pill(g.cscr, vw, wk, 3) if g.cscr is not None else "") + "</td>"
             parts.append(f"<tr{gattr}><td>{escape(g.group)}</td><td>{escape(', '.join(g.plant_ids))}</td>"
                          f"<td class='n c-grating'>{g.total_rating:,.1f}</td><td class='n c-wscr'>{g.wscr:.3f}</td>"
-                         f"<td><span class='pill {cls}'>{label}</span></td></tr>")
+                         f"<td><span class='pill {cls}'>{label}</span></td>{cs_cell}</tr>")
         parts.append("</tbody></table></div>")
 
     # --- Method and assumptions ---------------------------------------------
@@ -605,19 +682,25 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
     return head + "".join(out) + "</div>"
 
 
-def _groups_section(result, live) -> str:
+def _groups_section(result, live, ext=None) -> str:
     """Plants screened together: each plant alone vs the group's WSCR.
 
     In live (bus-scan) reports every member has the slider's plant size, so the
     browser recalculates WSCR = sum(SCMVA_i * P) / (n * P)**2 as the size changes.
     """
+    ext = ext or {}
     by_id = {p.plant_id: p for p in result.plants}
-    out = ["<h2>Plants screened together (WSCR)</h2>"]
+    network_aware = any(g.cscr is not None for g in result.groups)
+    out = ["<h2>Plants screened together (" + ("WSCR, CSCR and SCRIF" if network_aware else "WSCR") + ")</h2>"]
     if live:
         out.append("<div class='note' style='margin-top:-4px;margin-bottom:10px'>Each bus in a group "
                    "gets a plant of the size above. WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the "
                    "plants are fully interacting (electrically close); for buses far apart this is "
-                   "conservative.</div>")
+                   "conservative."
+                   + (" CSCR ties the group's points of interconnection together; SCRIF uses the network's "
+                      "interaction factors, so it sits between each plant's SCR and the WSCR. The group's flag "
+                      "and the Flagged count use WSCR, the most conservative." if network_aware else "")
+                   + "</div>")
     out.append("<div class='groups'>")
     for g in result.groups:
         cls, label = FLAG_STYLE[g.flag]
@@ -627,12 +710,25 @@ def _groups_section(result, live) -> str:
             p = by_id[pid]
             pc, pl = FLAG_STYLE[p.flag]
             attr = f" data-scmva='{p.scmva:.10g}'" if live else ""
-            out.append(f"<div class='gline'{attr}><span>{escape(pid)} alone</span>"
+            out.append(f"<div class='gline mem'{attr}><span>{escape(pid)} alone</span>"
                        f"<span><span class='val'>{p.scr:.2f}</span>"
                        f"<span class='pill {pc}'>{pl}</span></span></div>")
         out.append(f"<div class='gline total'><span>Together (WSCR)</span>"
                    f"<span><span class='val'>{g.wscr:.2f}</span>"
                    f"<span class='pill {cls}'>{label}</span></span></div>")
+        if g.cscr is not None:
+            a = (f" data-cs='{ext['cscmva'][g.group]:.10g}' data-n='{len(g.plant_ids)}'"
+                 if live and g.group in ext.get("cscmva", {}) else "")
+            out.append(f"<div class='gline sub cscr'{a}><span>Together, POIs tied (CSCR)</span>"
+                       f"<span>{_val_pill(g.cscr, *_th(result))}</span></div>")
+        for pid in g.plant_ids:
+            p = by_id[pid]
+            if p.scrif is None:
+                continue
+            a = (f" data-s='{p.scmva:.10g}' data-ifsum='{ext['ifsum'][pid]:.10g}'"
+                 if live and pid in ext.get("ifsum", {}) else "")
+            out.append(f"<div class='gline sub scrif'{a}><span>{escape(pid)} with interaction (SCRIF)</span>"
+                       f"<span>{_val_pill(p.scrif, *_th(result))}</span></div>")
         drop = 100 * (1 - g.wscr / g.min_individual_scr)
         text = (f"Screened together, strength is {drop:.0f}% lower than the weakest plant alone."
                 if g.wscr < g.min_individual_scr else "")
@@ -643,6 +739,45 @@ def _groups_section(result, live) -> str:
             out.append(f"<div class='note'>{text}</div>")
         out.append("</div>")
     out.append("</div>")
+    return "".join(out)
+
+
+def _th(result):
+    t = result.thresholds
+    return t["very_weak_below"], t["weak_below"]
+
+
+def _flag_word(v, vw, wk):
+    return "very weak" if v < vw else ("weak" if v < wk else "none")
+
+
+def _val_pill(v, vw, wk, digits=2) -> str:
+    cls, label = FLAG_STYLE[_flag_word(v, vw, wk)]
+    return f"<span class='val'>{v:.{digits}f}</span><span class='pill {cls}'>{label}</span>"
+
+
+def has_n1_any(result) -> bool:
+    return any(p.n1_scr is not None for p in result.plants)
+
+
+def _n1_section(result, live, vw, wk, top=12) -> str:
+    """The buses that weaken most under a single outage, weakest N-1 SCR first.
+
+    Ordering does not change with plant size (every SCR scales by the same 1/P), so only
+    values and flags update live.
+    """
+    rows = sorted((p for p in result.plants if p.n1_scr is not None), key=lambda p: p.n1_scr)[:top]
+    out = ["<h2>Worst single outage (N-1)</h2>",
+           "<div class='note' style='margin-top:-4px;margin-bottom:8px'>Each line circuit and transformer "
+           "unit was taken out of service in turn; for each bus, the lowest SCR and the outage that causes "
+           f"it. The {len(rows)} weakest buses under N-1 are listed; the Results table has every bus.</div>",
+           "<div class='tablewrap'><table><thead><tr><th>Bus</th><th class='n'>Intact SCR</th>"
+           "<th class='n'>N-1 SCR</th><th>Outage that causes it</th></tr></thead><tbody>"]
+    for p in rows:
+        a = (f" class='n1row' data-scmva='{p.scmva:.10g}' data-n1='{p.n1_scr * p.rating:.10g}'" if live else "")
+        out.append(f"<tr{a}><td>{escape(p.plant_id)}</td><td class='n k-int'>{p.scr:.3f}</td>"
+                   f"<td class='n'>{_val_pill(p.n1_scr, vw, wk, 3)}</td><td>{escape(p.n1_outage or '')}</td></tr>")
+    out.append("</tbody></table></div>")
     return "".join(out)
 
 

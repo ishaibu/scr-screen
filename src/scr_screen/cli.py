@@ -8,6 +8,8 @@ Examples:
     scr-screen convert case.m mynetwork.xlsx
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --open
     scr-screen sites-template mynetwork.xlsx sites.csv
+    scr-screen interactions mynetwork.xlsx --buses 11,12,13,16,17 --out groups.csv
+    scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --n1
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --groups groups.csv
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --site-costs sites.csv \
         --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
@@ -102,9 +104,7 @@ def _cmd_scan(args) -> int:
                           case=args.case, thresholds=thresholds, notes=calc_notes)
 
     # Label buses by name (e.g. IEEE bus numbers); fall back to index if names repeat.
-    labels = {r.bus: bus_label(net, r.bus) for r in rows}
-    use_names = len(set(labels.values())) == len(labels)
-    ids = {r.bus: f"Bus {labels[r.bus] if use_names else r.bus}" for r in rows}
+    ids, use_names = _bus_ids(net, [r.bus for r in rows])
     groups = _scan_groups(args, ids)
     plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw, group=groups.get(ids[r.bus]))
               for r in rows]
@@ -128,13 +128,18 @@ def _cmd_scan(args) -> int:
               "Bus labels are model indices (each bus's position in the network file, counting from 0); "
               "bus names were not unique.")]
     notes += [n for n in calc_notes if "excluded" in n]
+    result, extra, strength_notes = _network_strength(args, net, rows, ids, result)
+    notes += strength_notes
 
     cost = _cost_screening(args, result, thresholds)
 
     svg, map_note, interactive = None, None, None
     if args.report:
         svg, map_note = render_network_svg(net, {r.bus: (r.scr, r.flag) for r in rows},
-                                            scmva={r.bus: r.scmva for r in rows})
+                                            scmva={r.bus: r.scmva for r in rows},
+                                            n1={r.bus: extra["n1"][ids[r.bus]] for r in rows
+                                                if ids[r.bus] in extra["n1"]},
+                                            heat=not args.no_heatmap)
         compare = None
         other = "iec60909" if args.method == "classical" else "classical"
         if not args.no_compare and rep.ready(other):
@@ -146,7 +151,7 @@ def _cmd_scan(args) -> int:
             compare = {ids[r.bus]: r.scmva for r in other_rows if r.bus in ids}
         interactive = {"plant_mw": args.plant_mw, "compare": compare,
                        "primary_label": _short_label(args.method),
-                       "compare_label": _short_label(other)}
+                       "compare_label": _short_label(other), **extra}
     _print_summary(result)
     if cost:
         _print_costs(cost["rows"])
@@ -156,6 +161,143 @@ def _cmd_scan(args) -> int:
         from .cost import write_cost_csv
 
         print(f"Costs written:   {write_cost_csv(cost['rows'], args.cost_out)}")
+    return 0
+
+
+def _bus_ids(net, buses) -> tuple[dict[int, str], bool]:
+    """{bus index: "Bus <name>"}; falls back to indices if names repeat."""
+    from .netmap import bus_label
+
+    labels = {b: bus_label(net, b) for b in buses}
+    use_names = len(set(labels.values())) == len(labels)
+    return {b: f"Bus {labels[b] if use_names else b}" for b in buses}, use_names
+
+
+def _network_strength(args, net, rows, ids, result):
+    """SCRIF and CSCR for groups, ESCR where capacitors exist, and N-1 worst case.
+
+    Returns (updated result, extra data for the live report, notes). Interaction
+    factors, CSCR and N-1 use the classical flat-start Z-bus, so they are computed
+    only when the classical method is the primary method.
+    """
+    from dataclasses import replace
+
+    from .classical import build_zbus
+    from .strength import capacitor_mvar, composite_scmva, interaction_matrix, interaction_sums, n1_worst
+
+    extra = {"ifsum": {}, "cscmva": {}, "n1": {}, "n1_outage": {}, "qc": {}}
+    notes: list[str] = []
+    caps = {b: q for b, q in capacitor_mvar(net).items() if b in ids}
+    if not (result.groups or args.n1 or caps):
+        return result, extra, notes
+    if args.method != "classical":
+        if args.n1:
+            raise InputError("N-1 screening (--n1) uses the classical method. Remove --method iec60909 "
+                             "or remove --n1.")
+        if result.groups:
+            notes.append("SCRIF and CSCR use the classical network model, so they are shown only "
+                         "when the classical method is the primary method.")
+        zb = None
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            zb = build_zbus(net)
+    p_mw = args.plant_mw
+    pid_bus = {ids[r.bus]: r.bus for r in rows}
+    scm = {r.bus: r.scmva for r in rows}
+    plant_upd: dict[str, dict] = {}
+    group_upd: dict[str, float] = {}
+    if zb is not None and result.groups:
+        for g in result.groups:
+            buses = [pid_bus[p] for p in g.plant_ids]
+            sums = interaction_sums(interaction_matrix(zb, buses), buses)
+            for pid, b in zip(g.plant_ids, buses):
+                plant_upd.setdefault(pid, {})["scrif"] = scm[b] / (p_mw * (1 + sums[b]))
+                extra["ifsum"][pid] = sums[b]
+            cs = composite_scmva(zb, buses)
+            group_upd[g.group] = cs / (len(buses) * p_mw)
+            extra["cscmva"][g.group] = cs
+        notes.append("SCRIF_i = SCMVA_i ÷ (P_i + Σ IF_ij·P_j), with interaction factors IF_ij = |Z_ij ÷ Z_jj| "
+                     "from the classical network impedance matrix (NERC Reliability Guideline, 2017). "
+                     "CSCR = short-circuit MVA with the group's POIs tied together ÷ total MW; NERC's "
+                     "definition ties the plants' medium-voltage buses, which are not in a transmission model.")
+    if zb is not None and args.n1:
+        n1 = n1_worst(zb, [r.bus for r in rows], label=lambda b: ids.get(b, f"Bus {b}"))
+        for r in rows:
+            pid = ids[r.bus]
+            plant_upd.setdefault(pid, {}).update(n1_scr=n1.scmva[r.bus] / p_mw, n1_outage=n1.outage[r.bus])
+            extra["n1"][pid] = n1.scmva[r.bus]
+            extra["n1_outage"][pid] = n1.outage[r.bus]
+        notes.append(f"N-1: each of {n1.studied} line circuits and transformer units was removed in turn "
+                     "(classical method); the lowest short-circuit MVA at each bus and the outage causing it are "
+                     "shown." + (f" {len(n1.skipped)} outage(s) were skipped because they would leave buses "
+                                 "with no source: " + "; ".join(n1.skipped[:6])
+                                 + (" …" if len(n1.skipped) > 6 else "") + "." if n1.skipped else ""))
+    if caps:
+        for r in rows:
+            pid = ids[r.bus]
+            qc = caps.get(r.bus, 0.0)
+            plant_upd.setdefault(pid, {})["escr"] = (r.scmva - qc) / p_mw
+            extra["qc"][pid] = qc
+        notes.append("ESCR = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant MW, using the network's "
+                     "in-service capacitor banks.")
+    result.plants = [replace(p, **plant_upd[p.plant_id]) if p.plant_id in plant_upd else p for p in result.plants]
+    result.groups = [replace(g, cscr=group_upd[g.group]) if g.group in group_upd else g for g in result.groups]
+    return result, extra, notes
+
+
+def _cmd_interactions(args) -> int:
+    from .classical import build_zbus
+    from .loaders import load_network
+    from .strength import interaction_matrix, suggest_groups
+
+    if not 0 < args.threshold <= 1:
+        raise InputError(f"--threshold must be above 0 and at most 1, got {args.threshold:g}.")
+    path = _existing(args.network, "Network file")
+    net = load_network(path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        zb = build_zbus(net)
+    ids, _ = _bus_ids(net, list(zb.pos))
+    by_label = {pid[4:]: b for b, pid in ids.items()}
+    wanted = [x.strip() for x in args.buses.split(",") if x.strip()]
+    wanted = [w[4:].strip() if w.lower().startswith("bus ") else w for w in wanted]
+    unknown = [w for w in wanted if w not in by_label]
+    if unknown:
+        raise InputError(f"Bus(es) not found or isolated: {', '.join(unknown[:8])}. Use the bus labels "
+                         "shown in scan reports.")
+    if len(set(wanted)) != len(wanted) or len(wanted) < 2:
+        raise InputError("List at least two different buses with --buses, e.g. --buses 11,12,13.")
+    buses = [by_label[w] for w in wanted]
+    ifs = interaction_matrix(zb, buses)
+    width = max(len(w) for w in wanted) + 5
+    print(f"Interaction factors IF(row, column) = voltage change at the row bus per unit change at the "
+          f"column bus\n(classical network model of {path.name}; 1 = same bus, 0 = no interaction)\n")
+    print(" " * width + "".join(f"{('Bus ' + w):>{width}}" for w in wanted))
+    for w, i in zip(wanted, buses):
+        print(f"{('Bus ' + w):<{width}}" + "".join(f"{ifs[(i, j)]:>{width}.2f}" for j in buses))
+    groups = suggest_groups(ifs, buses, args.threshold)
+    print(f"\nSuggested groups (every pair of members has an interaction factor ≥ {args.threshold:g} "
+          "in at least one direction):")
+    if not groups:
+        print("  none: the listed buses interact weakly; screen them one at a time.")
+    rows = []
+    for k, g in enumerate(groups, start=1):
+        print(f"  G{k}: " + ", ".join(ids[b] for b in g))
+        rows += [(ids[b][4:], f"G{k}") for b in g]
+    alone = [ids[b] for b in buses if all(b not in g for g in groups)]
+    if alone:
+        print("  Screened alone: " + ", ".join(alone))
+    print("The threshold is SCR-Screen's default judgment value, not an industry standard; adjust with --threshold.")
+    if args.out:
+        import csv
+
+        out = Path(args.out)
+        with out.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["bus", "group"])
+            w.writerows(rows)
+        print(f"Groups written:  {out}  (use with: scr-screen scan {path.name} --plant-mw ... --groups {out.name})")
     return 0
 
 
@@ -319,8 +461,18 @@ def _print_summary(result: ScreeningResult) -> None:
     for p in sorted(result.plants, key=lambda p: p.scr, reverse=True):
         print(f"{p.plant_id[:19]:<20}{p.scmva:>11.1f}{p.rating:>10.1f}{p.scr:>9.3f}  "
               f"{p.flag:<10}{p.max_rating_no_flag:>13.1f}")
+    by_id = {p.plant_id: p for p in result.plants}
     for g in result.groups:
-        print(f"Group {g.group}: WSCR {g.wscr:.3f} ({g.flag}); plants {', '.join(g.plant_ids)}")
+        extra = f"; CSCR {g.cscr:.3f}" if g.cscr is not None else ""
+        print(f"Group {g.group}: WSCR {g.wscr:.3f} ({g.flag}){extra}; plants {', '.join(g.plant_ids)}")
+        scrifs = [f"{pid} {by_id[pid].scrif:.3f}" for pid in g.plant_ids if by_id[pid].scrif is not None]
+        if scrifs:
+            print("  SCRIF (network-aware): " + ", ".join(scrifs))
+    n1 = [p for p in result.plants if p.n1_scr is not None]
+    if n1:
+        print("N-1 worst case (lowest 5):")
+        for p in sorted(n1, key=lambda p: p.n1_scr)[:5]:
+            print(f"  {p.plant_id}: SCR {p.n1_scr:.3f} with {p.n1_outage} out (intact {p.scr:.3f})")
     flagged = sum(p.flag != "none" for p in result.plants) + sum(g.flag != "none" for g in result.groups)
     print(f"Flagged: {flagged}. Screening indicators only; not a substitute for studies.")
 
@@ -370,6 +522,14 @@ def _build_parser() -> argparse.ArgumentParser:
     v.add_argument("target", help="output file (.xlsx to edit in Excel, or .json)")
     v.set_defaults(func=_cmd_convert)
 
+    it = sub.add_parser("interactions", help="interaction factors between buses, and suggested groups for scan --groups")
+    it.add_argument("network", help="network file (.json, .xlsx, .m, .mat)")
+    it.add_argument("--buses", required=True, metavar="LIST", help="comma-separated bus labels, e.g. 11,12,13,16,17")
+    it.add_argument("--threshold", type=float, default=0.5, metavar="X",
+                    help="every pair of buses in a group must interact at least X (default 0.5)")
+    it.add_argument("--out", metavar="CSV", help="write the suggested groups as a groups file (bus, group)")
+    it.set_defaults(func=_cmd_interactions)
+
     st = sub.add_parser("sites-template", help="write a site cost CSV listing every bus of a network")
     st.add_argument("network", help="network file (.json, .xlsx, .m, .mat)")
     st.add_argument("path", help="where to save the template, e.g. sites.csv")
@@ -385,6 +545,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="IEC 60909 case (default max; ignored for classical)")
     s.add_argument("--no-compare", action="store_true",
                    help="skip the second method (the report's method comparison chart)")
+    s.add_argument("--no-heatmap", action="store_true",
+                   help="draw the network map without heat-map shading")
+    s.add_argument("--n1", action="store_true",
+                   help="also find each bus's worst single outage (N-1) SCR (classical method)")
     s.add_argument("--groups", metavar="CSV",
                    help="screen buses together with WSCR: CSV with columns bus, group "
                         "(each bus gets a plant of --plant-mw)")

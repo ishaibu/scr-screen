@@ -31,6 +31,52 @@ ASSUMPTIONS = {
 }
 
 
+# One-line drawing positions for the map (x to the right, y downward), the usual arrangement
+# of this system. The same positions are used by IBR-FaultScreen, so both tools draw the
+# IEEE 39-bus network identically. They are a drawing, not geography.
+LAYOUT = {
+    1: (1.0, 5.6),
+    2: (2.0, 2.6),
+    3: (3.5, 4.0),
+    4: (4.0, 5.6),
+    5: (3.4, 7.0),
+    6: (4.8, 7.2),
+    7: (3.6, 8.2),
+    8: (2.6, 8.6),
+    9: (1.6, 9.3),
+    10: (7.0, 9.2),
+    11: (5.9, 7.4),
+    12: (7.0, 7.95),
+    13: (8.1, 7.4),
+    14: (6.0, 5.8),
+    15: (7.6, 5.8),
+    16: (9.2, 5.2),
+    17: (8.0, 4.6),
+    18: (5.5, 4.0),
+    19: (10.0, 7.4),
+    20: (9.4, 8.6),
+    21: (11.5, 4.4),
+    22: (13.5, 4.4),
+    23: (13.5, 6.2),
+    24: (11.0, 6.0),
+    25: (3.5, 1.6),
+    26: (7.5, 1.6),
+    27: (8.0, 3.4),
+    28: (11.0, 0.9),
+    29: (13.0, 2.0),
+    30: (0.6, 1.4),
+    31: (5.2, 8.6),
+    32: (7.0, 10.2),
+    33: (11.0, 8.6),
+    34: (9.4, 9.7),
+    35: (15.4, 4.4),
+    36: (15.4, 6.2),
+    37: (3.5, 0.4),
+    38: (14.6, 1.0),
+    39: (0.6, 8.2),
+}
+
+
 def load_ieee39_with_assumed_sc_data():
     """Return the IEEE 39-bus case with assumed short-circuit data added."""
     net = pn.case39()
@@ -53,6 +99,14 @@ def load_ieee39_with_assumed_sc_data():
         for col, val in [("s_sc_max_mva", s_sc), ("s_sc_min_mva", s_sc),
                          ("rx_max", a["grid_r_over_x"]), ("rx_min", a["grid_r_over_x"])]:
             net.ext_grid.at[idx, col] = val
+
+    # Map positions: pandapower draws higher y higher up, so y is negated. "drawing": true
+    # tells SCR-Screen's map these are one-line drawing positions, not geographic coordinates.
+    import json
+
+    for b in net.bus.index:
+        x, y = LAYOUT[int(net.bus.at[b, "name"])]
+        net.bus.at[b, "geo"] = json.dumps({"type": "Point", "coordinates": [x, -y], "drawing": True})
     return net
 
 

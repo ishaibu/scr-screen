@@ -1,10 +1,10 @@
-# SCR-Screen — Design Specification (v0.1)
+# SCR-Screen — Design Specification
 
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | v0.1 release candidate |
-| Last updated | 2026-10-03 |
+| Status | Current through v0.3.0 |
+| Last updated | 2026-11-01 |
 | License | MIT |
 
 ---
@@ -13,11 +13,12 @@
 
 SCR-Screen is an open-source Python tool that screens **system strength** at the point of interconnection (POI) of inverter-based resources (IBRs) such as solar, wind, and battery energy storage. It calculates short-circuit-ratio-based metrics early in siting and interconnection, so engineers can flag potentially weak-grid locations, and compare candidate sites, **before** detailed studies are commissioned.
 
-### 1.1 In scope (v0.1)
+### 1.1 In scope
 
 - Single-plant **SCR** and multi-plant **WSCR** (MW and MVA bases).
 - Short-circuit MVA from a network model by two methods: **classical flat-start** and **IEC 60909**.
 - **Bus scan:** SCR at every bus for a hypothetical plant size.
+- **Network-aware metrics (v0.3):** interaction factors, SCRIF, CSCR and ESCR; suggested groups; N-1 worst-case SCR.
 - **Largest plant before a weak flag** at each location.
 - **Cost screening:** synchronous condenser mitigation, gen-tie line, and POI substation cost per candidate bus, from user-supplied costs.
 - **Own networks:** pandapower JSON, Excel, and MATPOWER files; a readiness check; a converter.
@@ -25,12 +26,12 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 - Self-contained **HTML report** with network map, method comparison, and interactive what-if inputs; CSV and JSON results.
 - Command line and Python API.
 
-### 1.2 Out of scope (v0.1)
+### 1.2 Out of scope (as of v0.3)
 
 - **Not a substitute for interconnection studies.** SCR-based metrics are screening indicators only. Weak-grid behavior is system- and equipment-specific and may require positive-sequence and EMT studies.
-- CSCR (composite SCR) and SCRIF (SCR with interaction factors), planned for v0.2.
-- Automatic contingency (N-1) scanning, retirement scenarios, queue build-out (planned for v0.2).
-- PSS/E `.raw` import (planned for v0.2).
+- EMT simulation. Interconnection studies must use equipment-specific EMT models (NERC, 2023); SCR-Screen screens which locations need them (EMT triage planned for v0.4).
+- Retirement scenarios and queue build-out; PSS/E `.raw` import (planned).
+- Frequency-domain metrics (impedance scans, Q/V sensitivity).
 - **Network upgrade costs** (thermal, voltage, stability). These need power flow and interconnection-queue studies.
 - Any shipped cost data, and any use of non-public network data.
 
@@ -55,11 +56,35 @@ $$WSCR = \frac{\sum_{i=1}^{N} SCMVA_i \cdot P_{RMW,i}}{\left(\sum_{i=1}^{N} P_{R
 - Developed by ERCOT (Zhang et al., IEEE PES GM 2014); presented in both NERC documents.
 - Assumes the N plants are **fully interacting**. The MVA variant replaces MW ratings with MVA.
 
-### 2.3 Composite Short-Circuit Ratio (CSCR) — deferred to v0.2 (Decision D5)
+### 2.3 Composite Short-Circuit Ratio (CSCR) — implemented in v0.3 (Decision D5)
 
 $$CSCR = \frac{CSCMVA}{\sum P_{rated}}$$
 
-CSCMVA is the short-circuit MVA at a common (virtual) bus tying the IBRs together, without IBR contribution. To be validated against the GE CSCR estimation guideline before implementation.
+CSCMVA is the short-circuit MVA at a common bus tying the IBRs together, without IBR contribution. NERC (2017) ties the plants' medium-voltage buses; plant collector systems are not in transmission models, so SCR-Screen ties the **points of interconnection** with zero impedance. With Z_GG the group's block of the bus impedance matrix:
+
+$$Z_{eq} = \frac{1}{\mathbf{1}^T Z_{GG}^{-1}\mathbf{1}}, \qquad CSCMVA = \frac{S_{base}}{|Z_{eq}|}$$
+
+Verified against an independent calculation that ties the buses with near-zero-impedance lines and recomputes short-circuit MVA. The GE estimation guideline (reference 4) was not reviewed for this implementation.
+
+### 2.3a Interaction factors and SCRIF (v0.3)
+
+$$IF_{ij} = \frac{\Delta V_i}{\Delta V_j} = \left|\frac{Z_{ij}}{Z_{jj}}\right|, \qquad SCRIF_i = \frac{SCMVA_i}{P_i + \sum_{j \ne i} IF_{ij} P_j}$$
+
+IF_ij is the voltage change at bus i per unit voltage change at bus j for a current injection at j (NERC 2017; NREL/TP-5D00-94961). SCRIF lies between SCR (IF = 0) and, for close buses, WSCR. Suggested groups (`scr-screen interactions`) use complete linkage: every pair of members has max(IF_ij, IF_ji) ≥ threshold (default 0.5, a judgment value).
+
+### 2.3b Effective SCR (ESCR) (v0.3)
+
+$$ESCR_i = \frac{SCMVA_i - Q_{c,i}}{P_i}$$
+
+Q_c,i is the in-service capacitive shunt compensation at bus i (pandapower `shunt` with q_mvar < 0, times step), in Mvar at 1.0 pu.
+
+### 2.3c N-1 worst case (v0.3)
+
+Each in-service line circuit (one circuit of a parallel entry) and transformer unit is removed in turn. Removing admittance y between buses a and b, with m = e_a − e_b, updates the impedance-matrix diagonal by Sherman–Morrison:
+
+$$Z'_{kk} = Z_{kk} + \frac{y\,(Zm)_k^2}{1 - y\,m^T Z m}$$
+
+Outages for which the denominator vanishes leave buses with no source; they are skipped and listed. Verified against rebuilding and re-inverting the network for every outage of the IEEE 39-bus case (agreement within 10⁻⁹).
 
 ### 2.4 Largest plant before a weak flag
 
@@ -81,7 +106,7 @@ $$\Delta SCMVA \approx \frac{S_{cond}}{X''_d + X_t} \quad\Rightarrow\quad S_{con
 
 ## 3. Engineering Conventions
 
-| # | Convention | v0.1 choice |
+| # | Convention | Choice |
 |---|---|---|
 | C1 | IBR fault contribution | Always excluded from SCMVA (sgen and storage set out of service, or not modeled as sources). |
 | C2 | Fault type | Balanced three-phase fault. |
@@ -239,7 +264,7 @@ T11 is checked by running the report's code in a simulated browser during develo
 | D1 + D3 | Rating basis | MW default; MVA optional when provided |
 | D2 | Short-circuit method | Both: classical flat-start (default) and IEC 60909, user-selectable |
 | D4 | Flag bands | Below 2 very weak; 2 to below 3 weak; 3–5 band removed |
-| D5 | CSCR | Deferred to v0.2 |
+| D5 | CSCR | Implemented in v0.3 at the POIs (plant medium-voltage buses are not in transmission models) |
 | D6 | Report format | HTML only; print to PDF from the browser |
 | D7 | Cost screening | Included in v0.1; user-supplied costs only; no default prices; network upgrades excluded |
 | D8 | Condenser defaults | X″d = 0.20, Xt = 0.10 pu (typical), labeled and adjustable |
@@ -247,6 +272,10 @@ T11 is checked by running the report's code in a simulated browser during develo
 | D10 | Site file scope | When given, only listed buses are costed |
 | D11 | Map readability | Map omitted above 400 buses; labels and pulsing rings limited to the 8 weakest flagged buses |
 | D12 | Number format | Numbers with commas rejected rather than guessed |
+| D13 | Network-aware metrics | SCRIF, CSCR and N-1 from the classical Z-bus only; refused or omitted (with a note) when IEC 60909 is the primary method |
+| D14 | Group flag | Group flag and Flagged count stay on WSCR (most conservative); SCRIF and CSCR shown alongside |
+| D15 | Heat map | Blurred flag-colored circle per bus under the map; labeled as a visual aid, not a computed field |
+| D16 | IEEE 39-bus drawing | One-line positions shared with IBR-FaultScreen, stored in the example network's bus coordinates with a "drawing" marker |
 
 ---
 
@@ -262,3 +291,5 @@ T11 is checked by running the report's code in a simulated browser during develo
 8. pandapower documentation: short-circuit module (`pandapower.shortcircuit`).
 9. IEEE Std 1204-1997, *IEEE Guide for Planning DC Links Terminating at AC Locations Having Low Short-Circuit Capacities*.
 10. IEEE Std 551-2006 (Violet Book), *IEEE Recommended Practice for Calculating AC Short-Circuit Currents in Industrial and Commercial Power Systems*.
+11. P. Sharma et al., *Existing Methods for Grid Strength Assessment and Role of Hydropower in Future Grids*, NREL/TP-5D00-94961, Nov 2025.
+12. NERC, *Electromagnetic Transient Modeling for BPS-Connected Inverter-Based Resources*, Reliability Guideline, Mar 2023.

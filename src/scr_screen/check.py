@@ -70,18 +70,18 @@ def check_network(net) -> CheckReport:
         rep.add(ERROR, "iec60909", f"{len(missing_iec)} generator(s) lack vn_kv, rdss_ohm or cos_phi, "
                 f"which IEC 60909 needs: {_short(missing_iec)}.")
 
-    # --- Elements the classical method does not model in v0.1 ---------------
+    # --- Elements the classical method does not model ---------------
     for table in UNSUPPORTED_TABLES:
         if table in net and len(net[table]) and "in_service" in net[table]:
             n = int(net[table]["in_service"].sum())
             if n:
                 rep.add(ERROR, "classical", f"{n} in-service '{table}' element(s): not modeled by "
-                        "the classical method in v0.1 (try --method iec60909).")
+                        "the classical method (try --method iec60909).")
     if "switch" in net and len(net.switch):
         n = int(((net.switch["et"] == "b") & net.switch["closed"]).sum())
         if n:
             rep.add(ERROR, "classical", f"{n} closed bus-bus switch(es): not supported by the "
-                    "classical method in v0.1 (merge those buses, or try --method iec60909).")
+                    "classical method (merge those buses, or try --method iec60909).")
 
     # --- Connectivity ---------------------------------------------------------
     if len(eg) or len(gens):
@@ -108,7 +108,7 @@ def check_network(net) -> CheckReport:
                 "report will omit the network map.")
     if len(live) > CLASSICAL_SLOW_ABOVE:
         rep.add(WARNING, "classical", f"{len(live)} buses: the classical method may be slow or run "
-                "out of memory at this size in v0.1; IEC 60909 may be faster.")
+                "out of memory at this size; IEC 60909 may be faster.")
     return rep
 
 

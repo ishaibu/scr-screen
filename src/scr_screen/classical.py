@@ -12,7 +12,7 @@ Method (common U.S. planning practice for SCR screening):
     4. Build the bus admittance matrix Y, then for each bus i:
          Z_th,i = [Y^-1]_ii   and   SCMVA_i = S_base / |Z_th,i|   (V = 1.0 pu)
 
-v0.1 supports: bus, ext_grid, gen, line, trafo (two-winding), and
+Supported elements: bus, ext_grid, gen, line, trafo (two-winding), and
 line/transformer switches. Other in-service elements raise a clear error
 rather than being silently ignored.
 """
@@ -20,6 +20,7 @@ rather than being silently ignored.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -27,8 +28,25 @@ from .metrics import InputError
 
 S_BASE_MVA = 100.0
 
-# Element tables that would change the result but aren't modeled in v0.1.
+# Element tables that would change the result but are not modeled.
 UNSUPPORTED_TABLES = ("trafo3w", "impedance", "xward", "ward", "dcline", "tcsc", "ssc", "vsc")
+
+
+@dataclass
+class ZBus:
+    """The network's bus impedance matrix on a 100 MVA base (classical model).
+
+    z[pos[b], pos[k]] is the driving-point (b == k) or transfer impedance in pu.
+    branches lists every in-service series element as (label, bus_a, bus_b, admittance_pu)
+    of ONE circuit (an entry with parallel=2 contributes two circuits in Y), used for
+    N-1 outage screening.
+    """
+
+    z: np.ndarray
+    pos: dict[int, int]
+    isolated: list[int]
+    notes: list[str]
+    branches: list[tuple[str, int, int, complex]] = field(default_factory=list)
 
 
 def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
@@ -39,6 +57,25 @@ def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
     level. With skip_isolated=True (used by full-network scans) they are left
     out and listed in the notes; otherwise requesting one raises InputError.
     """
+    zb = build_zbus(net)
+    z_bus, pos, isolated, notes = zb.z, zb.pos, zb.isolated, list(zb.notes)
+    values = {}
+    for b in bus_list:
+        if b in isolated:
+            if skip_isolated:
+                continue
+            raise InputError(f"Bus {b} has no path to any source (isolated part of the network).")
+        if b not in pos:
+            raise InputError(f"Bus {b} is out of service.")
+        z_th = abs(z_bus[pos[b], pos[b]])
+        if not math.isfinite(z_th) or z_th <= 0:
+            raise InputError(f"Bus {b} has no valid path to a source.")
+        values[b] = S_BASE_MVA / z_th
+    return values, notes
+
+
+def build_zbus(net) -> ZBus:
+    """Build Y for the classical flat-start model and invert it to the Z-bus."""
     _check_supported(net)
 
     live = [int(b) for b in net.bus.index[net.bus["in_service"]]]
@@ -55,6 +92,7 @@ def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
     ]
 
     open_lines, open_trafos = _open_switches(net)
+    branches: list[tuple[str, int, int, complex]] = []
 
     # --- Series branches: lines -------------------------------------------
     for idx, ln in net.line.iterrows():
@@ -67,7 +105,8 @@ def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
         par = float(ln.get("parallel", 1) or 1)
         z_ohm = complex(ln["r_ohm_per_km"], ln["x_ohm_per_km"]) * ln["length_km"] / par
         z_pu = z_ohm * S_BASE_MVA / vn**2
-        _add_branch(y, pos[f], pos[t], z_pu, f"line {idx}")
+        adm = _add_branch(y, pos[f], pos[t], z_pu, f"line {idx}")
+        branches.append((f"line {idx}", f, t, adm / par))  # one circuit
 
     # --- Series branches: two-winding transformers ------------------------
     for idx, tr in net.trafo.iterrows():
@@ -83,7 +122,8 @@ def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
         xk = math.sqrt(zk**2 - rk**2)
         par = float(tr.get("parallel", 1) or 1)
         z_pu = complex(rk, xk) * (S_BASE_MVA / tr["sn_mva"]) / par
-        _add_branch(y, pos[hv], pos[lv], z_pu, f"transformer {idx}")
+        adm = _add_branch(y, pos[hv], pos[lv], z_pu, f"transformer {idx}")
+        branches.append((f"transformer {idx}", hv, lv, adm / par))  # one unit
 
     # --- Sources: external grids ------------------------------------------
     n_sources = 0
@@ -136,19 +176,7 @@ def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
         notes.append(f"{len(isolated)} bus(es) have no path to any source and were "
                      "excluded: " + ", ".join(str(b) for b in isolated[:20])
                      + (" ..." if len(isolated) > 20 else "") + ".")
-    values = {}
-    for b in bus_list:
-        if b in isolated:
-            if skip_isolated:
-                continue
-            raise InputError(f"Bus {b} has no path to any source (isolated part of the network).")
-        if b not in pos:
-            raise InputError(f"Bus {b} is out of service.")
-        z_th = abs(z_bus[pos[b], pos[b]])
-        if not math.isfinite(z_th) or z_th <= 0:
-            raise InputError(f"Bus {b} has no valid path to a source.")
-        values[b] = S_BASE_MVA / z_th
-    return values, notes
+    return ZBus(z=z_bus, pos=pos, isolated=isolated, notes=notes, branches=branches)
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +233,7 @@ def _add_branch(y, i, j, z_pu, label):
     y[j, j] += adm
     y[i, j] -= adm
     y[j, i] -= adm
+    return adm
 
 
 def _add_shunt(y, i, z_pu, label):
@@ -222,7 +251,7 @@ def _open_switches(net, allow_bus_bus: bool = False):
         if sw["et"] == "b" and sw["closed"] and not allow_bus_bus:
             raise InputError(
                 "Closed bus-bus switches are not supported by the classical "
-                "method in v0.1. Merge those buses in the model."
+                "method. Merge those buses in the model."
             )
         if not sw["closed"]:
             if sw["et"] == "l":
@@ -238,7 +267,7 @@ def _check_supported(net):
             if bool(net[table]["in_service"].any()):
                 raise InputError(
                     f"The network contains in-service '{table}' elements, which "
-                    "the classical method does not model in v0.1."
+                    "the classical method does not model."
                 )
 
 

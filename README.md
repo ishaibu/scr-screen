@@ -29,11 +29,16 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 |---|---|
 | SCR | Single plant at its point of interconnection (POI) |
 | WSCR | Groups of plants assumed fully interacting (ERCOT/NERC formulation): in direct mode, and in network scans with `--groups` (live in the report as the plant size changes) |
+| SCRIF | SCR with interaction factors: each grouped plant's SCR allowing for how strongly the network couples it to its neighbors (NERC 2017; NREL 2025). Sits between SCR and WSCR |
+| CSCR | Composite SCR of a group, with the group's points of interconnection tied together |
+| ESCR | Effective SCR: short-circuit MVA minus capacitive shunt compensation at the bus, ÷ plant MW (shown when the network has capacitor banks) |
+| Interaction factors | `scr-screen interactions` lists how strongly buses affect each other and suggests groups for `--groups` |
+| N-1 worst case | `scan --n1` removes each line circuit and transformer unit in turn and reports each bus's lowest SCR and the outage that causes it |
 | Rating basis | MW (default) or MVA |
 | Short-circuit methods | Classical flat-start (1.0 pu) and IEC 60909 (via pandapower) |
 | Bus scan | SCR at every bus of a network for a hypothetical plant size |
 | Flags | Very weak / weak / no flag, with user-configurable thresholds |
-| Network map | Grid drawn from bus coordinates (or an automatic layout), colored and animated by SCR flag |
+| Network map | Grid drawn from bus coordinates (or an automatic layout), colored by SCR flag, with heat-map shading so weak areas stand out, and an N-1 view. The IEEE 39-bus example uses the standard one-line arrangement, shared with IBR-FaultScreen |
 | Plant-size slider | In scan reports, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
 | Max plant size | Largest plant each location can host before a weak flag (SCMVA ÷ weak threshold) |
 | Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
@@ -45,7 +50,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 ## Try it without installing
 
 - **[SCR-Screen Lite](https://ishaibu.github.io/scr-screen/lite/)**: browser calculator. Type each plant's short-circuit MVA and MW to get SCR, flags, WSCR, the largest plant before a weak flag, and condenser cost. Runs entirely in your browser.
-- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show how WSCR drops when plants are screened together.
+- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show WSCR, CSCR and SCRIF, the heat map shows weak areas, and the N-1 view shows each bus's worst single outage.
 
 ## Installation
 
@@ -107,7 +112,16 @@ scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_examp
 
 WSCR assumes the plants in a group are fully interacting, so group only buses that are electrically close; for buses far apart it is conservative.
 
-Run `scr-screen --help` or `scr-screen scan --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`).
+**Which buses interact, and N-1:** list candidate buses to see their interaction factors and get suggested groups, then scan with the groups and the worst single outage:
+
+```bash
+scr-screen interactions ieee39_assumed.json --buses 4,11,12,13,16,17,26,28,29 --out my_groups.csv
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups my_groups.csv --n1 --report full.html --open
+```
+
+Suggested groups contain only buses where every pair interacts at least `--threshold` (default 0.5, a judgment value, not an industry standard).
+
+Run `scr-screen --help` or `scr-screen scan --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--no-heatmap`).
 
 ## Use your own network
 
@@ -201,7 +215,13 @@ See [`examples/walkthrough.ipynb`](examples/walkthrough.ipynb) for a step-by-ste
 ## Methods
 
 **SCR** = SCMVA ÷ plant rating
-**WSCR** = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)²
+**WSCR** = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the plants in a group fully interact (conservative)
+**SCRIF**ᵢ = SCMVAᵢ ÷ (Pᵢ + Σⱼ IFᵢⱼ × Pⱼ), with interaction factor IFᵢⱼ = ΔVᵢ ÷ ΔVⱼ = |Zᵢⱼ ÷ Zⱼⱼ| from the network impedance matrix
+**CSCR** = short-circuit MVA with the group's POIs tied together ÷ ΣP (NERC ties the plants' medium-voltage buses; those are not in a transmission model)
+**ESCR** = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant rating
+**N-1**: each line circuit and transformer unit is removed in turn; outages that would leave buses with no source are skipped and listed
+
+SCRIF, CSCR and N-1 use the classical method's network impedance matrix.
 
 | Short-circuit method | Pre-fault voltage | Correction factors | Typical use |
 |---|---|---|---|
@@ -210,14 +230,25 @@ See [`examples/walkthrough.ipynb`](examples/walkthrough.ipynb) for a step-by-ste
 
 In both methods, inverter-based resources do not contribute to SCMVA.
 
-**Default flag bands** (user-configurable): below 2 **very weak**; 2 to below 3 **weak**; 3 or above **no flag**. These follow HVDC planning practice (IEEE Std 1204-1997). There is no universal weak-grid threshold.
+**Default flag bands** (user-configurable): below 2 **very weak**; 2 to below 3 **weak**; 3 or above **no flag**. These follow HVDC planning practice (IEEE Std 1204-1997). There is no universal weak-grid threshold: NERC notes there is "no industry standard for what strong, weak, or very weak system strength means" (2017).
+
+**Thresholds used in practice** (examples from public documents; check the current criteria of your transmission provider):
+
+| Source | Value | Use |
+|---|---|---|
+| NREL/TP-5D00-94961 (2025) | SCR < 3 weak, > 5 strong | General rule of thumb |
+| SPP, ORNL EMT Workshop (Aug 2023) | SCR, WSCR, CSCR below 6.0 | Screening: further study (dynamic and/or EMT) generally required |
+| ERCOT Panhandle studies (2016–2019) | WSCR 1.5 | Regional planning and operating threshold, backed by EMT studies |
+
+To screen with a single threshold such as SPP's, set `--weak 6` (buses below 6 are then flagged).
 
 Full details: [design specification](docs/design-spec.md).
 
 ## Limitations
 
 - SCR-based metrics assume **grid-following** inverters and do not replace the inverter manufacturer's minimum SCR.
-- WSCR assumes the plants in a group are fully interacting.
+- WSCR assumes the plants in a group are fully interacting; SCRIF uses the network's interaction factors instead. Both are single-frequency, steady-state screens and do not capture control interactions; EMT studies with equipment-specific models remain essential below the screening thresholds (NERC, 2023).
+- The heat-map shading is a visual aid: strength is calculated only at buses, not between them.
 - The classical method ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
 - Real transmission models are often restricted (e.g. CEII in the U.S.). SCR-Screen ships only public test data; users run it on their own models.
 - Cost screening is screening-level only and excludes network upgrades; all costs are user inputs.
@@ -228,8 +259,16 @@ Every formula is covered by automated tests with hand-calculated expected values
 
 ## Roadmap
 
-- **v0.2:** PSS/E `.raw` import, N-1 contingency worst case, generator retirement scenarios, interconnection-queue build-out, composite SCR (CSCR)
-- **v0.3:** mitigation sizing (e.g. synchronous condenser MVA needed), SCR with interaction factors (SCRIF)
+**Released**
+
+- **v0.1.0** (October 2026): SCR and WSCR, classical and IEC 60909 short-circuit methods, bus scan, your own networks, cost screening with synchronous condenser sizing and target check, interactive report, SCR-Screen Lite.
+- **v0.2.0** (October 2026): WSCR groups in network scans (`--groups`), live group results in the report.
+- **v0.3.0** (October 2026): network-aware screening: interaction factors and SCRIF, CSCR, ESCR, suggested groups (`interactions`), N-1 worst case (`--n1`), heat-map shading and N-1 view on the network map.
+
+**Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
+
+- **v0.4:** EMT triage: a point-of-interconnection system strength data sheet (SCR, ESCR, SCRIF, CSCR, X/R, Thévenin impedance) with a clear "EMT study recommended" flag based on cited criteria.
+- **Later:** PSS/E `.raw` import, generator retirement and interconnection-queue build-out scenarios, and SCRIF in SCR-Screen Lite.
 
 ## Feedback and contributions
 
@@ -242,6 +281,10 @@ Found a bug, have a question, or use SCR-Screen in your work? Please [open an is
 3. Y. Zhang et al., "Evaluating system strength for large-scale wind plant integration," IEEE PES General Meeting, 2014.
 4. IEEE Std 1204-1997, *IEEE Guide for Planning DC Links Terminating at AC Locations Having Low Short-Circuit Capacities*.
 5. IEC 60909-0, *Short-circuit currents in three-phase a.c. systems*.
+6. P. Sharma et al., *Existing Methods for Grid Strength Assessment and Role of Hydropower in Future Grids*, NREL/TP-5D00-94961, National Renewable Energy Laboratory, November 2025.
+7. NERC, *Electromagnetic Transient Modeling for BPS-Connected Inverter-Based Resources: Recommended Model Requirements and Verification Practices*, Reliability Guideline, March 2023.
+8. Southwest Power Pool, *Planning Session*, ORNL EMT Workshop, August 2023 (screening thresholds).
+9. T. Athay, R. Podmore, S. Virmani, "A Practical Method for the Direct Analysis of Transient Stability," *IEEE Trans. PAS*, vol. PAS-98, no. 2, 1979 (IEEE 39-bus system).
 
 ## How to cite
 

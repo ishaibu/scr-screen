@@ -12,7 +12,7 @@ import json
 import math
 from html import escape
 
-MAX_MAP_BUSES = 400  # above this, a full map becomes unreadable in v0.1
+MAX_MAP_BUSES = 400  # above this, a full map becomes unreadable
 MAX_LABELS = 8  # label and pulse only the weakest flagged buses, to keep the map readable
 
 FLAG_CLASS = {"very weak": "vw", "weak": "wk", "none": "ok"}
@@ -28,7 +28,9 @@ def bus_label(net, bus: int) -> str:
 
 def render_network_svg(net, results: dict[int, tuple[float, str]],
                        width: int = 900, height: int = 620,
-                       scmva: dict[int, float] | None = None) -> tuple[str | None, str]:
+                       scmva: dict[int, float] | None = None,
+                       n1: dict[int, float] | None = None,
+                       heat: bool = True) -> tuple[str | None, str]:
     """Draw the network.
 
     Args:
@@ -36,6 +38,9 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
         results: {bus index: (SCR, flag)} for the buses that were screened.
         scmva: optional {bus index: SCMVA}. When given, each bus carries its SCMVA
             so the report's plant-size slider can recolor the map in the browser.
+        n1: optional {bus index: worst single-outage SCMVA}, for the map's N-1 view.
+        heat: draw heat-map shading (a blurred circle in each bus's flag color)
+            under the network, so weak areas stand out like a contour plot.
 
     Returns:
         (svg or None, note). svg is None when the network is too large to map;
@@ -43,7 +48,7 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
     """
     buses = [int(b) for b in net.bus.index[net.bus["in_service"]]]
     if len(buses) > MAX_MAP_BUSES:
-        return None, (f"Network map omitted: {len(buses)} buses exceeds the v0.1 map limit "
+        return None, (f"Network map omitted: {len(buses)} buses exceeds the map limit "
                       f"of {MAX_MAP_BUSES}. See the results table.")
 
     edges = _edges(net, set(buses))
@@ -62,9 +67,13 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
 
     sources = _source_buses(net)
     scmva = scmva or {}
+    n1 = n1 or {}
     out = [f"<svg class='netmap' viewBox='0 0 {width} {height}' role='img' "
            "xmlns='http://www.w3.org/2000/svg'>"
-           "<title>Network map: buses colored by SCR flag</title><g class='edges'>"]
+           "<title>Network map: buses colored by SCR flag</title>"]
+    if heat:
+        out.append(_heat_layer(buses, px, edges, results, scmva, n1))
+    out.append("<g class='edges'>")
 
     # Staggered entrance animation: about one second in total, whatever the size.
     step_edge = min(18.0, 700.0 / max(len(edges), 1))
@@ -97,6 +106,8 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
                 f" data-src='{1 if src else 0}'")
         if b in scmva:
             data += f" data-scmva='{scmva[b]:.10g}'"
+        if b in n1:
+            data += f" data-n1='{n1[b]:.10g}'"
         halo = (f"<circle cx='{x:.1f}' cy='{y:.1f}' r='9' class='halo {cls}'/>" if b in highlight else "")
         if src:
             s_ = 15 if big else 12
@@ -117,6 +128,34 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
 
 
 # ---------------------------------------------------------------------------
+
+def _heat_layer(buses, px, edges, results, scmva, n1) -> str:
+    """Blurred circles in each bus's flag color: a visual aid, like a contour plot.
+
+    Strength is calculated only at buses; the shading between them is not a
+    computed field. The radius follows the typical line length on the drawing.
+    """
+    lengths = sorted(math.dist(px[a], px[b]) for a, b, _ in edges if a in px and b in px)
+    typical = lengths[len(lengths) // 2] if lengths else 60.0
+    r = max(16.0, min(60.0, 0.7 * typical))
+    blur = r * 0.45
+    out = [f"<defs><filter id='scr-heat-blur' x='-50%' y='-50%' width='200%' height='200%'>"
+           f"<feGaussianBlur stdDeviation='{blur:.1f}'/></filter></defs>"
+           "<g class='heat' filter='url(#scr-heat-blur)' aria-hidden='true'>"]
+    for b in buses:
+        if b not in results:
+            continue
+        cls = FLAG_CLASS[results[b][1]]
+        x, y = px[b]
+        data = f" data-bus='{b}'"
+        if b in scmva:
+            data += f" data-scmva='{scmva[b]:.10g}'"
+        if b in n1:
+            data += f" data-n1='{n1[b]:.10g}'"
+        out.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{r:.1f}' class='hz {cls}'{data}/>")
+    out.append("</g>")
+    return "".join(out)
+
 
 def _edges(net, live: set[int]) -> list[tuple[int, int, str]]:
     edges = []
@@ -149,6 +188,9 @@ def _positions(net, buses, edges):
                 break
             coords[b] = xy
     if coords and len({c for c in coords.values()}) > 1:
+        if all(_is_drawing(net.bus.at[b, "geo"]) for b in buses):
+            return coords, ("Bus positions follow the usual one-line drawing of this network (shared with "
+                            "IBR-FaultScreen); they are a drawing, not geographic.")
         return coords, "Bus positions from the network's own coordinates."
 
     import networkx as nx
@@ -163,6 +205,15 @@ def _positions(net, buses, edges):
     return ({b: (float(p[0]), float(p[1])) for b, p in layout.items()},
             "Bus positions computed automatically from the network topology "
             "(the network has no coordinates); distances are not geographic.")
+
+
+def _is_drawing(value) -> bool:
+    """True if a bus.geo point is marked as a one-line drawing position (not geographic)."""
+    try:
+        data = json.loads(value) if isinstance(value, str) else value
+        return bool(data.get("drawing"))
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def _parse_geo(value):

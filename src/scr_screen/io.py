@@ -142,7 +142,7 @@ def write_results_csv(result: ScreeningResult, path: str | Path) -> Path:
     path = Path(path)
     cols = ["type", "id", "group", "poi_name", "scmva", f"rating_{result.basis.lower()}",
             "ratio", "flag", f"max_{result.basis.lower()}_no_flag",
-            "method_source", "tool_version", "run_utc"]
+            "method_source", "tool_version", "run_utc", "scrif", "escr", "n1_ratio", "n1_outage", "cscr"]
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
@@ -150,12 +150,17 @@ def write_results_csv(result: ScreeningResult, path: str | Path) -> Path:
             w.writerow(["plant (SCR)", p.plant_id, p.group or "", p.poi_name,
                         f"{p.scmva:.2f}", f"{p.rating:.2f}", f"{p.scr:.3f}", p.flag,
                         f"{p.max_rating_no_flag:.1f}",
-                        result.source, result.tool_version, result.run_utc])
+                        result.source, result.tool_version, result.run_utc,
+                        _f3(p.scrif), _f3(p.escr), _f3(p.n1_scr), p.n1_outage or "", ""])
         for g in result.groups:
             w.writerow(["group (WSCR)", g.group, g.group, "; ".join(g.plant_ids), "",
                         f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag, "",
-                        result.source, result.tool_version, result.run_utc])
+                        result.source, result.tool_version, result.run_utc, "", "", "", "", _f3(g.cscr)])
     return path
+
+
+def _f3(v) -> str:
+    return "" if v is None else f"{v:.3f}"
 
 
 def write_template_csv(path: str | Path) -> Path:

@@ -3,6 +3,29 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-01
+
+Network-aware screening.
+
+### Added
+- **SCR with interaction factors (SCRIF)** for grouped buses in network scans: SCRIF_i = SCMVA_i ÷ (P_i + Σ IF_ij·P_j), with interaction factors IF_ij = |Z_ij ÷ Z_jj| from the network impedance matrix (NERC Reliability Guideline, 2017; NREL/TP-5D00-94961, 2025). It sits between each plant's SCR and the group's WSCR.
+- **Composite SCR (CSCR)** for each group: short-circuit MVA with the group's points of interconnection tied together, ÷ total MW.
+- **Effective SCR (ESCR)**: short-circuit MVA minus capacitive shunt compensation at the bus, ÷ plant MW; shown when the network has capacitor banks.
+- **`scr-screen interactions`**: interaction-factor table for a list of buses, and suggested groups (every pair interacts at least `--threshold`, default 0.5), written as a groups file for `scan --groups`.
+- **`scan --n1`**: each line circuit and transformer unit is removed in turn; each bus's lowest SCR and the outage that causes it are reported (console, CSV/JSON, report section, results table, summary card). Outages that would leave buses with no source are skipped and listed.
+- **Heat-map shading** on the network map, so weak areas stand out like a contour plot (toggle in the report; `--no-heatmap` to omit), and an **N-1 view** of the map.
+- All new values update live with the plant-size slider and thresholds.
+- Results CSV gains columns `scrif`, `escr`, `n1_ratio`, `n1_outage`, `cscr` (appended at the end; existing columns unchanged).
+
+### Changed
+- The bundled IEEE 39-bus example now carries one-line drawing positions shared with IBR-FaultScreen (please refer to ibr-faultscreen tool in my repository), so both tools draw the network identically; the map says the positions are a drawing, not geographic. Short-circuit results are unchanged.
+- README: thresholds used in practice (NREL, SPP, ERCOT) with sources; updated roadmap; new references.
+- Error messages and the design specification no longer refer to "v0.1".
+
+### Notes
+- SCRIF, CSCR and N-1 use the classical method's network impedance matrix; with `--method iec60909`, `--n1` is refused and SCRIF/CSCR are omitted with a note.
+- Group flags and the Flagged count still use WSCR, the most conservative group metric.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added

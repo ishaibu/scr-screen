@@ -118,8 +118,22 @@ def test_map_carries_scmva_for_live_updates():
     rows = scan_buses(net, 150, method="classical")
     svg, _ = render_network_svg(net, {r.bus: (r.scr, r.flag) for r in rows},
                                 scmva={r.bus: r.scmva for r in rows})
-    assert svg.count("data-scmva=") == 4
+    import re
+
+    assert len(re.findall(r"<g class='bus'[^>]*data-scmva=", svg)) == 4      # bus markers
+    assert len(re.findall(r"<circle [^>]*class='hz [^>]*data-scmva=", svg)) == 4  # heat shading
     assert "animation-delay" in svg
+
+
+def test_heat_map_can_be_turned_off_and_n1_is_carried():
+    net = small_net()
+    rows = scan_buses(net, 150, method="classical")
+    res = {r.bus: (r.scr, r.flag) for r in rows}
+    off, _ = render_network_svg(net, res, scmva={r.bus: r.scmva for r in rows}, heat=False)
+    assert "class='hz" not in off and "scr-heat-blur" not in off
+    on, _ = render_network_svg(net, res, scmva={r.bus: r.scmva for r in rows},
+                               n1={r.bus: r.scmva / 2 for r in rows})
+    assert "scr-heat-blur" in on and on.count("data-n1=") == 8   # 4 markers + 4 heat circles
 
 
 def test_labels_and_rings_limited_to_weakest_eight():

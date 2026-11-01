@@ -25,6 +25,11 @@ class PlantResult:
     scr: float
     flag: str
     max_rating_no_flag: float  # largest plant (same basis) that would not be flagged weak
+    # Network-aware metrics (network scans with the classical method; None otherwise)
+    scrif: float | None = None       # SCR with interaction factors, within the plant's group
+    escr: float | None = None        # effective SCR (capacitive shunt compensation subtracted)
+    n1_scr: float | None = None      # worst single-outage (N-1) SCR
+    n1_outage: str | None = None     # the outage that causes it
 
 
 @dataclass(frozen=True)
@@ -35,6 +40,7 @@ class GroupResult:
     wscr: float
     flag: str
     min_individual_scr: float
+    cscr: float | None = None        # composite SCR at the group's POIs tied together
 
 
 @dataclass
