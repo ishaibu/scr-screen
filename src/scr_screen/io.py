@@ -14,6 +14,7 @@ Files saved from Excel as "CSV UTF-8" are supported.
 from __future__ import annotations
 
 import csv
+import math
 import json
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from .metrics import InputError, Plant
 from .screening import ScreeningResult
 
 REQUIRED = ("plant_id", "scmva", "rating_mw")
-OPTIONAL = ("rating_mva", "group", "poi_name")
+OPTIONAL = ("rating_mva", "inverters", "inverter_mva", "power_factor", "group", "poi_name")
 
 TEMPLATE_ROWS = [
     # Illustrative values only (design-spec test cases), not a real system.
@@ -43,6 +44,22 @@ def read_plants_csv(path: str | Path) -> tuple[list[Plant], dict[str, str]]:
     Raises:
         InputError with the row number and column for any problem.
     """
+    plants, poi_names, _ = read_plants_csv_detail(path)
+    return plants, poi_names
+
+
+def read_plants_csv_detail(path: str | Path):
+    """Like read_plants_csv, plus where each plant's MVA rating came from.
+
+    A row's MVA rating can be given ONE way: rating_mva (nameplate); inverters
+    and inverter_mva (nameplate = inverters × inverter_mva); or power_factor (an
+    ESTIMATE, MW ÷ power factor). All are optional; the MW basis does not use them.
+
+    Returns:
+        (plants, poi_names, mva_sources) with mva_sources = {plant_id: text}.
+    """
+    from .metrics import mva_source_text, plant_mva
+
     path = Path(path)
     if not path.exists():
         raise InputError(f"Input file not found: {path}")
@@ -60,7 +77,7 @@ def read_plants_csv(path: str | Path) -> tuple[list[Plant], dict[str, str]]:
             )
         reader.fieldnames = headers
 
-        plants, poi_names, seen = [], {}, set()
+        plants, poi_names, seen, sources = [], {}, set(), {}
         for row_no, raw in enumerate(reader, start=2):  # row 1 is the header
             row = {k: (v or "").strip() for k, v in raw.items() if k is not None}
             if not any(row.values()):
@@ -72,11 +89,23 @@ def read_plants_csv(path: str | Path) -> tuple[list[Plant], dict[str, str]]:
                 raise InputError(f"Row {row_no}: plant_id '{pid}' appears more than once.")
             seen.add(pid)
 
+            mw = _number(row, "rating_mw", row_no, required=True)
+            inv = _number(row, "inverters", row_no, required=False)
+            inv_mva = _number(row, "inverter_mva", row_no, required=False)
+            pf = _number(row, "power_factor", row_no, required=False)
+            try:
+                mva, kind = plant_mva(mw, mva=_number(row, "rating_mva", row_no, required=False),
+                                      inverters=inv, inverter_mva=inv_mva, power_factor=pf,
+                                      where=f"plant '{pid}'")
+            except InputError as e:
+                raise InputError(f"Row {row_no}: {e}") from None
+            if mva is not None:
+                sources[pid] = mva_source_text(mw, mva, kind, inv, inv_mva, pf)
             plant = Plant(
                 plant_id=pid,
                 scmva=_number(row, "scmva", row_no, required=True),
-                rating_mw=_number(row, "rating_mw", row_no, required=True),
-                rating_mva=_number(row, "rating_mva", row_no, required=False),
+                rating_mw=mw,
+                rating_mva=mva,
                 group=row.get("group") or None,
             )
             plants.append(plant)
@@ -84,7 +113,7 @@ def read_plants_csv(path: str | Path) -> tuple[list[Plant], dict[str, str]]:
 
     if not plants:
         raise InputError(f"{path.name} has a header but no plant rows.")
-    return plants, poi_names
+    return plants, poi_names, sources
 
 
 def read_bus_groups_csv(path: str | Path) -> dict[str, str]:
@@ -98,10 +127,24 @@ def read_bus_groups_csv(path: str | Path) -> dict[str, str]:
     Returns:
         {bus label: group name}
     """
+    return {bus: g for bus, (g, _, _) in read_bus_groups_full(path).items()}
+
+
+def read_bus_groups_full(path: str | Path) -> dict[str, tuple[str, float | None, float | None]]:
+    """Read a groups file, including optional per-bus sizes.
+
+    Required columns: bus, group. Optional columns: mw, mva. When a row gives
+    both mw and mva, that member keeps this fixed size (for example an existing
+    or queued plant, or a STATCOM with mw = 0) instead of the scan's plant size.
+    A row must give both or neither.
+
+    Returns:
+        {bus label: (group name, mw or None, mva or None)}
+    """
     path = Path(path)
     if not path.exists():
         raise InputError(f"Groups file not found: {path}")
-    groups: dict[str, str] = {}
+    groups: dict[str, tuple[str, float | None, float | None]] = {}
     with path.open(newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -124,7 +167,17 @@ def read_bus_groups_csv(path: str | Path) -> dict[str, str]:
             if key in groups:
                 raise InputError(f"Row {row_no}: bus '{bus}' appears more than once "
                                  "(a bus can belong to one group only).")
-            groups[key] = group
+            mw = _number(row, "mw", row_no, required=False)
+            mva = _number(row, "mva", row_no, required=False)
+            if (mw is None) != (mva is None):
+                raise InputError(f"Row {row_no}: give both mw and mva for bus '{bus}', or leave both empty "
+                                 "to use the scan's plant size.")
+            if mw is not None:
+                if not (math.isfinite(mw) and mw >= 0):
+                    raise InputError(f"Row {row_no}: mw must be 0 or more, got {mw:g}.")
+                if not (math.isfinite(mva) and mva > 0):
+                    raise InputError(f"Row {row_no}: mva must be greater than zero, got {mva:g}.")
+            groups[key] = (group, mw, mva)
     if not groups:
         raise InputError(f"{path.name} has a header but no rows.")
     return groups

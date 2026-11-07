@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Sequence
 
 from . import __version__
-from .metrics import Plant, RatingBasis, _to_basis, classify, group_wscr, plant_scr
+from .metrics import InputError, Plant, RatingBasis, _to_basis, classify, group_wscr, plant_scr
 from .settings import DEFAULT_THRESHOLDS, Thresholds
 
 
@@ -41,6 +41,8 @@ class GroupResult:
     flag: str
     min_individual_scr: float
     cscr: float | None = None        # composite SCR at the group's POIs tied together
+    member_ratings: list[float] | None = None  # each member's rating, when the groups file sets sizes
+    member_scrif: list[float] | None = None    # each member's SCRIF (network scans, classical method)
 
 
 @dataclass
@@ -52,6 +54,7 @@ class ScreeningResult:
     run_utc: str
     plants: list[PlantResult] = field(default_factory=list)
     groups: list[GroupResult] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)  # 0 MW devices left out on the MW basis
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -83,6 +86,13 @@ def screen(
         tool_version=__version__,
         run_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     )
+
+    if basis is RatingBasis.MW:
+        # Devices with no active power (rating_mw = 0, e.g. STATCOMs) count only on the MVA basis.
+        result.excluded = [p.plant_id for p in plants if p.rating_mw == 0]
+        plants = [p for p in plants if p.rating_mw > 0]
+        if not plants:
+            raise InputError("Every plant has rating_mw = 0; use the MVA basis (--basis MVA).")
 
     for p in plants:
         value = plant_scr(p, basis)

@@ -4,6 +4,7 @@
     ieee39_assumed.json        IEEE 39-bus network with ASSUMED short-circuit data (public test system)
     ieee39_sites_example.csv   site cost file with ILLUSTRATIVE costs for four candidate buses
     ieee39_groups_example.csv  bus groups screened together with WSCR (scan --groups)
+    ieee39_groups_mva_example.csv  the same groups plus an ILLUSTRATIVE 200 MVA STATCOM at bus 12 (MVA basis)
     plants_template.csv        direct-mode input with example plants
 """
 
@@ -15,7 +16,7 @@ from pathlib import Path
 from .metrics import InputError
 
 FILES = ("ieee39_assumed.json", "ieee39_sites_example.csv", "ieee39_groups_example.csv",
-         "plants_template.csv")
+         "ieee39_groups_mva_example.csv", "plants_template.csv")
 
 GUIDE = """SCR-Screen example files
 =========================
@@ -26,6 +27,8 @@ ieee39_assumed.json       IEEE 39-bus test system with ASSUMED short-circuit dat
 ieee39_sites_example.csv  Site costs for four candidate buses. ILLUSTRATIVE values only.
 ieee39_groups_example.csv Two groups of nearby buses screened together with WSCR
                           (G1: buses 11 and 13; G2: buses 16 and 17).
+ieee39_groups_mva_example.csv  The same groups plus an ILLUSTRATIVE 200 MVA STATCOM
+                          (0 MW) at bus 12 in G1, for the MVA basis.
 plants_template.csv       Direct-mode input with example plants.
 
 Try, from inside this folder:
@@ -36,6 +39,9 @@ Try, from inside this folder:
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --report groups.html --open --groups ieee39_groups_example.csv
   scr-screen interactions ieee39_assumed.json --buses 4,11,12,13,16,17,26,28,29 --out my_groups.csv
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups my_groups.csv --n1 --report full.html --open
+  scr-screen scan ieee39_assumed.json --plant-mw 1500 --plant-mva 1650 --basis MVA --groups ieee39_groups_mva_example.csv --report mva.html --open
+  scr-screen scan ieee39_assumed.json --plant-mw 1500 --power-factor 0.95 --basis MVA --report mva_estimate.html --open
+  scr-screen scan ieee39_assumed.json --plant-mw 1500 --gen-out 38,39 --report mingen.html --open
 
 Screening only: results do not replace interconnection studies.
 """

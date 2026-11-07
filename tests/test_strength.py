@@ -118,23 +118,67 @@ def test_escr_subtracts_capacitor_mvar(tmp_path):
 
 # --- N-1 -----------------------------------------------------------------------------
 
-def test_n1_matches_full_rebuild_for_every_outage():
-    net = load_network(NET)
-    zb = build_zbus(net)
-    buses = list(zb.pos)
-    fast = n1_worst(zb, buses)
+def _brute_n1(net, buses, tables):
     base, _ = scmva_classical(net, buses)
     worst = dict(base)
-    for table in ("line", "trafo"):
+    for table in tables:
         for idx in net[table].index:
             m = copy.deepcopy(net)
             m[table].at[idx, "in_service"] = False
             values, _ = scmva_classical(m, buses, skip_isolated=True)
             for b, v in values.items():
                 worst[b] = min(worst[b], v)
+    return worst
+
+
+def test_n1_matches_full_rebuild_for_every_outage():
+    """Lines, transformers and generator units (v0.3.1): Sherman-Morrison equals a full rebuild."""
+    net = load_network(NET)
+    zb = build_zbus(net)
+    buses = list(zb.pos)
+    fast = n1_worst(zb, buses)
+    worst = _brute_n1(net, buses, ("line", "trafo", "gen"))
+    assert fast.studied == 46 + 9 and not fast.skipped
+    for b in buses:
+        assert fast.scmva[b] == pytest.approx(worst[b], rel=1e-9)
+
+
+def test_n1_branches_only_unchanged_from_v030():
+    """With generators=False the result is exactly the v0.3.0 branch-only N-1."""
+    net = load_network(NET)
+    zb = build_zbus(net)
+    buses = list(zb.pos)
+    fast = n1_worst(zb, buses, generators=False)
+    worst = _brute_n1(net, buses, ("line", "trafo"))
     assert fast.studied == 46 and not fast.skipped
     for b in buses:
         assert fast.scmva[b] == pytest.approx(worst[b], rel=1e-9)
+
+
+def test_n1_generator_outage_label_and_value():
+    net = load_network(NET)
+    zb = build_zbus(net)
+    b38 = int(net.bus.index[net.bus["name"] == 38][0])
+    res = n1_worst(zb, [b38], label=lambda b: f"Bus {net.bus.at[b, 'name']}")
+    assert res.outage[b38].startswith("generator ") and res.outage[b38].endswith("(Bus 38)")
+    m = copy.deepcopy(net)
+    m.gen.loc[m.gen["bus"] == b38, "in_service"] = False
+    v, _ = scmva_classical(m, [b38])
+    assert res.scmva[b38] == pytest.approx(v[b38], rel=1e-9)
+
+
+def test_n1_only_source_removed_is_skipped():
+    """Removing the only source would leave no source at all: skipped, not divided by zero."""
+    import pandapower as pp
+    net = pp.create_empty_network()
+    b0 = pp.create_bus(net, 230)
+    b1 = pp.create_bus(net, 230)
+    pp.create_gen(net, b0, p_mw=100, sn_mva=500, xdss_pu=0.2, vm_pu=1.0)
+    pp.create_line_from_parameters(net, b0, b1, 10, 0.01, 0.3, 0, 1)
+    pp.create_line_from_parameters(net, b0, b1, 10, 0.01, 0.3, 0, 1)
+    zb = build_zbus(net)
+    res = n1_worst(zb, [b0, b1])
+    assert res.studied == 2 and len(res.skipped) == 1 and res.skipped[0].startswith("generator")
 
 
 def test_n1_skips_outages_that_island_buses():

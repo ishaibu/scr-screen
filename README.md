@@ -3,6 +3,7 @@
 [![tests](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml/badge.svg)](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![Interactive demo](https://img.shields.io/badge/demo-open%20in%20browser-0a9396)](https://ishaibu.github.io/scr-screen/demo/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23130832.svg)](https://doi.org/10.5281/zenodo.23130832)
 
 **Open-source short-circuit ratio (SCR) screening for solar, wind, and battery storage interconnection.**
@@ -10,6 +11,14 @@
 SCR-Screen helps interconnection, planning, and siting engineers find weak-grid locations **early**, before detailed studies are commissioned. It calculates short-circuit strength from a network model, screens single plants (SCR) and groups of nearby plants (WSCR), and produces a clear, self-contained HTML report.
 
 > **Screening only.** SCR-Screen provides screening-level indicators of system strength. Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the requirements of the applicable transmission provider.
+
+<p align="center">
+  <a href="https://ishaibu.github.io/scr-screen/demo/"><img src="https://raw.githubusercontent.com/ishaibu/scr-screen/main/docs/images/network-map.gif" width="760"
+  alt="Network map of the IEEE 39-bus system: as the plant size grows from 300 to 1,500 MW, weak buses turn orange and red with heat-map shading, then the N-1 view shows each bus's worst single outage"></a>
+</p>
+<p align="center"><em>A full IEEE 39-bus scan (assumed data): as the plant size grows from 300 to 1,500 MW,
+weak locations light up; the N-1 view then shows each bus's worst single outage, down to an SCR of 0.91.
+<a href="https://ishaibu.github.io/scr-screen/demo/">Open the interactive demo</a> and drag the slider yourself.</em></p>
 
 ---
 
@@ -30,15 +39,18 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | SCR | Single plant at its point of interconnection (POI) |
 | WSCR | Groups of plants assumed fully interacting (ERCOT/NERC formulation): in direct mode, and in network scans with `--groups` (live in the report as the plant size changes) |
 | SCRIF | SCR with interaction factors: each grouped plant's SCR allowing for how strongly the network couples it to its neighbors (NERC 2017; NREL 2025). Sits between SCR and WSCR |
-| CSCR | Composite SCR of a group, with the group's points of interconnection tied together |
-| ESCR | Effective SCR: short-circuit MVA minus capacitive shunt compensation at the bus, ÷ plant MW (shown when the network has capacitor banks) |
+| CSCR | Composite SCR of a group, with the group's points of interconnection tied together; on the MVA basis it divides by the plants' nominal MVA ratings, as NERC defines it |
+| ESCR | Effective SCR: short-circuit MVA minus capacitive shunt compensation at the bus, ÷ plant rating (shown when the network has capacitor banks). This is the classical "Effective SCR"; NERC (2017) notes it is distinct from CIGRE's "Equivalent SCR", which is SCRIF |
 | Interaction factors | `scr-screen interactions` lists how strongly buses affect each other and suggests groups for `--groups` |
-| N-1 worst case | `scan --n1` removes each line circuit and transformer unit in turn and reports each bus's lowest SCR and the outage that causes it |
-| Rating basis | MW (default) or MVA |
+| N-1 worst case | `scan --n1` removes each line circuit, transformer unit and generator unit in turn and reports each bus's lowest SCR and the outage that causes it |
+| Minimum-generation case | `scan --gen-out 30,32` takes the generators at those buses out of service for the whole scan |
+| Rating basis | MW (default) or MVA, in direct mode (`run --basis MVA`) and network scans (`scan --basis MVA`), giving NERC's WSCR-MVA and MVA-based CSCR. MW stays the default; MVA is used only when you choose it. Devices with no active power (e.g. STATCOMs: 0 MW plus an MVA rating) count on the MVA basis |
+| Plant MVA rating | The nameplate (inverter) MVA rating, as NERC's MVA metrics use. Give it directly, as the inverter count × each inverter's MVA (e.g. 55 × 4.2 MVA = 231 MVA), or, early in a project, **estimate** it from the power factor required at the POI (MVA = MW ÷ power factor, labeled as an estimate) |
+| Group sizes | A groups file can give a member its own size (`mw`, `mva` columns), e.g. an existing plant or a STATCOM next to the plant being screened |
 | Short-circuit methods | Classical flat-start (1.0 pu) and IEC 60909 (via pandapower) |
 | Bus scan | SCR at every bus of a network for a hypothetical plant size |
 | Flags | Very weak / weak / no flag, with user-configurable thresholds |
-| Network map | Grid drawn from bus coordinates (or an automatic layout), colored by SCR flag, with heat-map shading so weak areas stand out, and an N-1 view. The IEEE 39-bus example uses the standard one-line arrangement, shared with IBR-FaultScreen |
+| Network map | Grid drawn from bus coordinates (or an automatic layout), colored by SCR flag, with heat-map shading so weak areas stand out, and an N-1 view. The IEEE 39-bus example uses the commonly published one-line arrangement |
 | Plant-size slider | In scan reports, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
 | Max plant size | Largest plant each location can host before a weak flag (SCMVA ÷ weak threshold) |
 | Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
@@ -121,7 +133,31 @@ scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups my_groups.csv --n1 
 
 Suggested groups contain only buses where every pair interacts at least `--threshold` (default 0.5, a judgment value, not an industry standard).
 
-Run `scr-screen --help` or `scr-screen scan --help` for all options (`--basis MVA`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--no-heatmap`).
+**MVA basis, mixed sizes and STATCOMs:** NERC describes WSCR on both the MW and the MVA basis, and defines CSCR with the nominal (nameplate) MVA ratings of the inverter-based resources. MW stays the default. To use MVA, choose the basis and give the plant's MVA rating in ONE of three ways:
+
+```bash
+# nameplate MVA known
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --plant-mva 1650 --basis MVA --report mva.html
+# inverter count x each inverter's nameplate MVA (here 393 x 4.2 = 1,650.6 MVA)
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --inverters 393 --inverter-mva 4.2 --basis MVA --report mva.html
+# early in a project: ESTIMATE from the power factor required at the POI (1,500 / 0.95 = 1,578.9 MVA)
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --power-factor 0.95 --basis MVA --report mva.html
+```
+
+The report says which way was used. An estimate from the power factor is labeled as one: inverter nameplate MVA is usually higher (collector and transformer reactive losses, oversizing), which gives lower, more conservative ratios, so use the nameplate when it is known.
+
+A groups file can also give any member its own size with optional `mw` and `mva` (nameplate) columns (both or neither). Members without them use the scan's plant size. A device with no active power, such as a STATCOM, is entered as `mw` 0 with its `mva`; it counts on the MVA basis and is left out (with a note) on the MW basis.
+
+```
+bus,group,mw,mva
+11,G1,,
+13,G1,,
+12,G1,0,200
+```
+
+**Minimum-generation case:** `--gen-out 30,32` takes the generators at those buses out of service for the whole scan. The weakest short-circuit levels usually occur with fewer units online.
+
+Run `scr-screen --help`, `scr-screen run --help` or `scr-screen scan --help` for all options (`--basis`, `--plant-mva`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--gen-out`, `--no-heatmap`).
 
 ## Use your own network
 
@@ -176,8 +212,10 @@ One row per plant. Column order and capitalization do not matter; files saved fr
 |---|---|---|
 | `plant_id` | Yes | Unique label |
 | `scmva` | Yes | Three-phase short-circuit MVA at the POI, **without** IBR contribution |
-| `rating_mw` | Yes | Plant rating in MW |
-| `rating_mva` | No | Plant rating in MVA (needed only for `--basis MVA`) |
+| `rating_mw` | Yes | Plant rating in MW (0 for a device with no active power, such as a STATCOM, with an MVA rating) |
+| `rating_mva` | No | Nameplate (inverter) MVA rating; used only with `--basis MVA` |
+| `inverters`, `inverter_mva` | No | Instead of `rating_mva`: the number of inverters and each inverter's nameplate MVA (MVA = inverters × inverter_mva) |
+| `power_factor` | No | Instead of either: an **estimate**, MVA = MW ÷ power factor (e.g. 0.95 at the POI). `run --power-factor 0.95` applies it to every plant with no MVA rating |
 | `group` | No | Plants sharing a group are also screened together with WSCR |
 | `poi_name` | No | Display name of the POI |
 
@@ -217,9 +255,11 @@ See [`examples/walkthrough.ipynb`](examples/walkthrough.ipynb) for a step-by-ste
 **SCR** = SCMVA ÷ plant rating
 **WSCR** = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the plants in a group fully interact (conservative)
 **SCRIF**ᵢ = SCMVAᵢ ÷ (Pᵢ + Σⱼ IFᵢⱼ × Pⱼ), with interaction factor IFᵢⱼ = ΔVᵢ ÷ ΔVⱼ = |Zᵢⱼ ÷ Zⱼⱼ| from the network impedance matrix
-**CSCR** = short-circuit MVA with the group's POIs tied together ÷ ΣP (NERC ties the plants' medium-voltage buses; those are not in a transmission model)
+**CSCR** = short-circuit MVA with the group's POIs tied together ÷ ΣP (NERC ties the plants' medium-voltage buses, which are not in a transmission model, and divides by nominal MVA: use `--basis MVA` to match)
 **ESCR** = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant rating
-**N-1**: each line circuit and transformer unit is removed in turn; outages that would leave buses with no source are skipped and listed
+**N-1**: each line circuit, transformer unit and synchronous generator unit is removed in turn; outages that would leave buses with no source are skipped and listed
+
+P is the plant rating on the chosen basis: MW (default) or MVA.
 
 SCRIF, CSCR and N-1 use the classical method's network impedance matrix.
 
@@ -239,6 +279,8 @@ In both methods, inverter-based resources do not contribute to SCMVA.
 | NREL/TP-5D00-94961 (2025) | SCR < 3 weak, > 5 strong | General rule of thumb |
 | SPP, ORNL EMT Workshop (Aug 2023) | SCR, WSCR, CSCR below 6.0 | Screening: further study (dynamic and/or EMT) generally required |
 | ERCOT Panhandle studies (2016–2019) | WSCR 1.5 | Regional planning and operating threshold, backed by EMT studies |
+| IESO (Ontario), LT2 RFP connection guidance | Minimum SCR 5 at the POI | Assumed for stable operation of each IBR |
+| AESO (Alberta), IBR connection requirements | Minimum and maximum short-circuit level at the connection point, specified by AESO; EMT results must be stable at that minimum or at SCR 3.0, whichever is lower | Connection requirement and EMT test benchmark |
 
 To screen with a single threshold such as SPP's, set `--weak 6` (buses below 6 are then flagged).
 
@@ -263,7 +305,8 @@ Every formula is covered by automated tests with hand-calculated expected values
 
 - **v0.1.0** (October 2026): SCR and WSCR, classical and IEC 60909 short-circuit methods, bus scan, your own networks, cost screening with synchronous condenser sizing and target check, interactive report, SCR-Screen Lite.
 - **v0.2.0** (October 2026): WSCR groups in network scans (`--groups`), live group results in the report.
-- **v0.3.0** (October 2026): network-aware screening: interaction factors and SCRIF, CSCR, ESCR, suggested groups (`interactions`), N-1 worst case (`--n1`), heat-map shading and N-1 view on the network map.
+- **v0.3.0** (November 2026): network-aware screening: interaction factors and SCRIF, CSCR, ESCR, suggested groups (`interactions`), N-1 worst case (`--n1`), heat-map shading and N-1 view on the network map.
+- **v0.3.1** (November 2026): MVA basis in network scans (NERC's WSCR-MVA and MVA-based CSCR), STATCOMs and other 0 MW devices, per-member group sizes, generator outages in N-1, minimum-generation case (`--gen-out`), MW/MVA switch in SCR-Screen Lite.
 
 **Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
 
@@ -284,7 +327,9 @@ Found a bug, have a question, or use SCR-Screen in your work? Please [open an is
 6. P. Sharma et al., *Existing Methods for Grid Strength Assessment and Role of Hydropower in Future Grids*, NREL/TP-5D00-94961, National Renewable Energy Laboratory, November 2025.
 7. NERC, *Electromagnetic Transient Modeling for BPS-Connected Inverter-Based Resources: Recommended Model Requirements and Verification Practices*, Reliability Guideline, March 2023.
 8. Southwest Power Pool, *Planning Session*, ORNL EMT Workshop, August 2023 (screening thresholds).
-9. T. Athay, R. Podmore, S. Virmani, "A Practical Method for the Direct Analysis of Transient Stability," *IEEE Trans. PAS*, vol. PAS-98, no. 2, 1979 (IEEE 39-bus system).
+9. IESO, *Preliminary Connection Guidance for the Long-Term 2 RFP*.
+10. AESO, *Connection Requirements for Inverter-Based Resources*.
+11. T. Athay, R. Podmore, S. Virmani, "A Practical Method for the Direct Analysis of Transient Stability," *IEEE Trans. PAS*, vol. PAS-98, no. 2, 1979 (IEEE 39-bus system).
 
 ## How to cite
 

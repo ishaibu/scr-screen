@@ -82,7 +82,9 @@ def test_cli_scan_rejects_zero_or_negative_plant_size(mw, capsys):
 
 def test_report_has_invalid_size_message_area():
     html = render_html(scan_like(), interactive={"plant_mw": 100, "compare": None})
-    assert "id='mw-msg'" in html and "Enter a plant size above 0 MW" in html
+    # The unit (MW, or MVA on the MVA basis) is filled in by the script from the report's settings.
+    assert "id='mw-msg'" in html and "Enter a plant size above 0 '+U+'" in html
+    assert '"unit": "MW"' in html
 
 
 def test_whatif_panel_threshold_inputs_and_live_labels():

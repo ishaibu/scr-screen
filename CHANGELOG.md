@@ -3,6 +3,27 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-11-07
+
+Rating basis and contingency coverage, completing the metrics in NERC's 2017 comparison table (SCR, CSCR, WSCR-MW, WSCR-MVA, SCRIF).
+
+### Added
+- **MVA basis in network scans:** `scan --basis MVA --plant-mva X`. Every ratio, the slider and cost screening use MVA, giving NERC's WSCR-MVA and CSCR divided by nominal MVA ratings, as NERC defines it. (Direct mode has had `run --basis MVA` since v0.1.0.)
+- **Plant MVA rating, three ways:** the nameplate (inverter) MVA (`--plant-mva`, `rating_mva`); the inverter count × each inverter's MVA (`--inverters 55 --inverter-mva 4.2` = 231 MVA; `inverters`, `inverter_mva` columns); or, early in a project, an **estimate** from the power factor required at the POI (`--power-factor 0.95`: MVA = MW ÷ 0.95; `power_factor` column, or `run --power-factor`). Estimates are labeled in the console and report. MW stays the default basis.
+- **Devices with no active power** (e.g. STATCOMs): `rating_mw` 0 with a `rating_mva`. They count on the MVA basis and are left out, with a note, on the MW basis.
+- **Group member sizes:** optional `mw` and `mva` columns in the groups file give a member its own size (an existing plant, or a STATCOM); other members use the scan's plant size. WSCR, SCRIF and CSCR use these sizes, live in the report.
+- **Generator outages in N-1:** `--n1` now also removes each synchronous generator unit (external grids, which are network equivalents, are not removed).
+- **Minimum-generation case:** `scan --gen-out 30,32` takes the generators at those buses out of service for the whole scan.
+- **SCR-Screen Lite:** MW/MVA switch and a Nameplate (MVA) column that also accepts the inverter count × MVA (e.g. `55×4.2`); an optional power factor at the POI estimates blank MVA cells (shown as "≈ … (est.)"); STATCOMs with 0 MW count on the MVA basis.
+- **Animated network map in the README**, linking to the interactive demo (`docs/images/network-map.gif`, captured from the demo page).
+- Example file `ieee39_groups_mva_example.csv` (illustrative 200 MVA STATCOM at bus 12).
+- README thresholds table: IESO (Ontario) and AESO (Alberta).
+
+### Changed
+- `--n1` results now include generator outages, so the worst N-1 SCR can be lower at generator buses (in the IEEE 39-bus example, only the nine generator buses change). Line and transformer outages give the same results as v0.3.0.
+- The map caption no longer names another tool.
+- Results JSON adds `excluded` (0 MW devices left out on the MW basis) and, for groups, `member_ratings` and `member_scrif`. Existing fields are unchanged.
+
 ## [0.3.0] - 2026-11-01
 
 Network-aware screening.
@@ -18,7 +39,7 @@ Network-aware screening.
 - Results CSV gains columns `scrif`, `escr`, `n1_ratio`, `n1_outage`, `cscr` (appended at the end; existing columns unchanged).
 
 ### Changed
-- The bundled IEEE 39-bus example now carries one-line drawing positions shared with IBR-FaultScreen (please refer to ibr-faultscreen tool in my repository), so both tools draw the network identically; the map says the positions are a drawing, not geographic. Short-circuit results are unchanged.
+- The bundled IEEE 39-bus example now carries one-line drawing positions that follow the commonly published diagram of this system; the map says the positions are a drawing, not geographic. Short-circuit results are unchanged.
 - README: thresholds used in practice (NREL, SPP, ERCOT) with sources; updated roadmap; new references.
 - Error messages and the design specification no longer refer to "v0.1".
 

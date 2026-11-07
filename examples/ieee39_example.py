@@ -31,9 +31,8 @@ ASSUMPTIONS = {
 }
 
 
-# One-line drawing positions for the map (x to the right, y downward), the usual arrangement
-# of this system. The same positions are used by IBR-FaultScreen, so both tools draw the
-# IEEE 39-bus network identically. They are a drawing, not geography.
+# One-line drawing positions for the map (x to the right, y downward), following the commonly
+# published one-line diagram of this system. They are a drawing, not geography.
 LAYOUT = {
     1: (1.0, 5.6),
     2: (2.0, 2.6),

@@ -25,10 +25,13 @@ Effective SCR (ESCR)
     compensation (Mvar at 1.0 pu) connected at the bus.
 
 N-1 worst case
-    Each in-service line circuit or transformer unit is removed in turn
-    (Sherman-Morrison update of the Z-bus diagonal) and the lowest SCMVA at each
-    bus is kept with the outage that causes it. Outages that would leave buses
-    with no source (islanding) are skipped and counted.
+    Each in-service line circuit, transformer unit and synchronous generator unit
+    is removed in turn (Sherman-Morrison update of the Z-bus diagonal) and the
+    lowest SCMVA at each bus is kept with the outage that causes it. Outages that
+    would leave buses with no source (islanding) are skipped and counted.
+    Removing a branch of admittance y between buses a and b uses m = e_a - e_b;
+    removing a generator (admittance y to ground at bus k) uses m = e_k:
+        Y' = Y - y m m',   Z'_ii = Z_ii + y (Z m)_i^2 / (1 - y m' Z m)
 """
 
 from __future__ import annotations
@@ -104,8 +107,12 @@ class N1Result:
     skipped: list[str]             # outages skipped because they island buses
 
 
-def n1_worst(zb: ZBus, buses: list[int], label=None) -> N1Result:
-    """Worst single-outage SCMVA for each bus in `buses` (Sherman-Morrison on the Z diagonal)."""
+def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) -> N1Result:
+    """Worst single-outage SCMVA for each bus in `buses` (Sherman-Morrison on the Z diagonal).
+
+    Outages: every line circuit and transformer unit, and (if `generators`) every
+    synchronous generator unit.
+    """
     label = label or (lambda b: str(b))
     z = zb.z
     cols = [_pos(zb, b) for b in buses]
@@ -113,15 +120,23 @@ def n1_worst(zb: ZBus, buses: list[int], label=None) -> N1Result:
     worst = {b: S_BASE_MVA / abs(d) for b, d in zip(buses, base_diag)}
     cause = {b: "none" for b in buses}
     studied, skipped = 0, []
+    outages = []
     for name, a, b, y1 in zb.branches:
-        if a not in zb.pos or b not in zb.pos:
-            continue
-        pa, pb = zb.pos[a], zb.pos[b]
-        zm = z[:, pa] - z[:, pb]                 # Z m, with m = e_a - e_b
-        mzm = zm[pa] - zm[pb]                    # m' Z m
-        c = -y1                                  # removing the circuit: Y' = Y + c m m'
+        if a in zb.pos and b in zb.pos:
+            outages.append((f"{name} ({label(a)}–{label(b)})", zb.pos[a], zb.pos[b], y1))
+    if generators:
+        for name, k, y1 in zb.sources:
+            if k in zb.pos:
+                outages.append((f"{name} ({label(k)})", zb.pos[k], None, y1))
+    for text, pa, pb, y1 in outages:
+        if pb is None:
+            zm = z[:, pa].copy()                 # Z m, with m = e_k (unit to ground)
+            mzm = zm[pa]
+        else:
+            zm = z[:, pa] - z[:, pb]             # Z m, with m = e_a - e_b
+            mzm = zm[pa] - zm[pb]                # m' Z m
+        c = -y1                                  # removing the element: Y' = Y + c m m'
         denom = 1.0 + c * mzm
-        text = f"{name} ({label(a)}–{label(b)})"
         if abs(denom) < ISLAND_TOL * max(1.0, abs(c * mzm)):
             skipped.append(text)
             continue

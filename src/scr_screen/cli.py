@@ -71,17 +71,49 @@ def _cmd_template(args) -> int:
 
 
 def _cmd_run(args) -> int:
-    plants, poi = read_plants_csv(_existing(args.csv, "Input file"))
+    from dataclasses import replace
+
+    from .io import read_plants_csv_detail
+    from .metrics import mva_source_text, plant_mva
+
+    plants, poi, sources = read_plants_csv_detail(_existing(args.csv, "Input file"))
+    notes = []
+    if args.power_factor is not None:
+        # Fill in an ESTIMATED MVA (MW ÷ power factor) for plants with no MVA rating of their own.
+        for k, p in enumerate(plants):
+            if p.rating_mva is None:
+                mva, kind = plant_mva(p.rating_mw, power_factor=args.power_factor, where=f"plant '{p.plant_id}'")
+                plants[k] = replace(p, rating_mva=mva)
+                sources[p.plant_id] = mva_source_text(p.rating_mw, mva, kind, power_factor=args.power_factor)
+    if args.basis.upper() == "MVA" and sources:
+        est = [pid for pid, t in sources.items() if "ESTIMATED" in t]
+        notes.append("MVA ratings used on the MVA basis: "
+                     + "; ".join(f"{pid}: {t.split(';')[0]}" for pid, t in sources.items()) + "."
+                     + (" Estimated ratings use MW ÷ power factor; inverter nameplate MVA is usually higher, "
+                        "which gives lower (more conservative) ratios, so use the nameplate when it is known."
+                        if est else ""))
+        print(notes[-1])
     result = screen(plants, basis=args.basis, thresholds=_thresholds(args),
                     source="direct input", poi_names=poi)
+    if result.excluded:
+        notes.append(_excluded_note(result.excluded))
+        print(notes[-1])
     _print_summary(result)
-    _write_outputs(result, args, notes=[])
+    _write_outputs(result, args, notes=notes)
     return 0
+
+
+def _excluded_note(ids) -> str:
+    return ("Left out on the MW basis (0 MW, e.g. STATCOMs): " + ", ".join(ids)
+            + ". Devices with no active power count only on the MVA basis (NERC's WSCR-MVA); use --basis MVA.")
 
 
 def _cmd_scan(args) -> int:
     if not args.plant_mw > 0:
         raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
+    basis = args.basis.upper()
+    mva_note = _resolve_plant_mva(args, basis)
+    rating = args.plant_mva if basis == "MVA" else args.plant_mw  # the size used in every ratio
     from .check import check_network
     from .loaders import load_network
     from .netmap import bus_label, render_network_svg
@@ -89,6 +121,7 @@ def _cmd_scan(args) -> int:
 
     path = _existing(args.network, "Network file")
     net = load_network(path)
+    gen_out_note = _apply_gen_out(args, net)
     rep = check_network(net)
     if not rep.ready(args.method):
         _print_check(rep, path.name)
@@ -100,25 +133,45 @@ def _cmd_scan(args) -> int:
         # Harmless notices from inside pandapower; they would only confuse users.
         warnings.simplefilter("ignore", FutureWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
-        rows = scan_buses(net, plant_mw=args.plant_mw, method=args.method,
+        rows = scan_buses(net, plant_mw=rating, method=args.method,
                           case=args.case, thresholds=thresholds, notes=calc_notes)
 
     # Label buses by name (e.g. IEEE bus numbers); fall back to index if names repeat.
     ids, use_names = _bus_ids(net, [r.bus for r in rows])
-    groups = _scan_groups(args, ids)
-    plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw, group=groups.get(ids[r.bus]))
+    groups_full = _scan_groups_full(args, ids)
+    # Fixed member sizes from the groups file, on the chosen basis. On the MW basis a
+    # member with mw = 0 (e.g. a STATCOM) is left out of its group.
+    sizes: dict[str, float] = {}
+    dropped: list[str] = []
+    for pid, (_, mw, mva) in groups_full.items():
+        if mw is None:
+            continue
+        if basis == "MW" and mw == 0:
+            dropped.append(pid)
+        else:
+            sizes[pid] = mva if basis == "MVA" else mw
+    groups = {pid: g for pid, (g, _, _) in groups_full.items() if pid not in dropped}
+    plants = [Plant(ids[r.bus], scmva=r.scmva, rating_mw=args.plant_mw,
+                    rating_mva=args.plant_mva if basis == "MVA" else None, group=groups.get(ids[r.bus]))
               for r in rows]
     poi = {ids[r.bus]: str(r.bus) for r in rows}  # position in the network file (from 0)
     label = METHOD_LABELS[args.method]
     if args.method == "iec60909":
         label += f", case '{args.case}'"
-    result = screen(plants, basis="MW", thresholds=thresholds,
-                    source=f"network model ({path.name}), {label}", poi_names=poi)
+    est = (f"; plant MVA estimated from power factor {args.power_factor:g}"
+           if basis == "MVA" and getattr(args, "mva_kind", None) == "estimated" else "")
+    result = screen(plants, basis=basis, thresholds=thresholds,
+                    source=f"network model ({path.name}), {label}{est}", poi_names=poi)
+    if sizes:
+        result = _resize_groups(result, sizes, rating, thresholds)
     result.groups.sort(key=lambda g: g.group)  # scan order is by SCR; list groups by name
-    notes = [f"Bus scan: a hypothetical {args.plant_mw:g} MW plant was screened at each bus, "
-             "one at a time. "
+    size_txt = (f"{args.plant_mw:g} MW / {args.plant_mva:g} MVA" if basis == "MVA" else f"{args.plant_mw:g} MW")
+    notes = [f"Bus scan: a hypothetical {size_txt} plant was screened at each bus, "
+             "one at a time" + (" (ratios on the MVA basis)" if basis == "MVA" else "") + ". "
              + ("Buses listed in the groups file were also screened together with WSCR, "
-                "each with a plant of the same size; WSCR assumes the plants in a group are "
+                + ("each with a plant of the same size" if not sizes else
+                   "using the sizes given in the groups file where present and the plant size above elsewhere")
+                + "; WSCR assumes the plants in a group are "
                 "fully interacting, so group only buses that are electrically close."
                 if groups else
                 "Nearby plants should also be checked together with WSCR (add --groups)."),
@@ -128,7 +181,15 @@ def _cmd_scan(args) -> int:
               "Bus labels are model indices (each bus's position in the network file, counting from 0); "
               "bus names were not unique.")]
     notes += [n for n in calc_notes if "excluded" in n]
-    result, extra, strength_notes = _network_strength(args, net, rows, ids, result)
+    if gen_out_note:
+        notes.append(gen_out_note)
+    if mva_note:
+        notes.append(mva_note)
+    if dropped:
+        notes.append("Left out of their groups on the MW basis (0 MW, e.g. STATCOMs): " + ", ".join(dropped)
+                     + ". Devices with no active power count only on the MVA basis (NERC's WSCR-MVA); "
+                     "use --basis MVA with --plant-mva.")
+    result, extra, strength_notes = _network_strength(args, net, rows, ids, result, rating, sizes)
     notes += strength_notes
 
     cost = _cost_screening(args, result, thresholds)
@@ -146,15 +207,15 @@ def _cmd_scan(args) -> int:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", DeprecationWarning)
-                other_rows = scan_buses(net, plant_mw=args.plant_mw, method=other,
+                other_rows = scan_buses(net, plant_mw=rating, method=other,
                                         case=args.case, thresholds=thresholds)
             compare = {ids[r.bus]: r.scmva for r in other_rows if r.bus in ids}
-        interactive = {"plant_mw": args.plant_mw, "compare": compare,
+        interactive = {"plant_mw": rating, "unit": basis, "compare": compare,
                        "primary_label": _short_label(args.method),
                        "compare_label": _short_label(other), **extra}
     _print_summary(result)
     if cost:
-        _print_costs(cost["rows"])
+        _print_costs(cost["rows"], unit=basis)
     _write_outputs(result, args, notes=notes, network_svg=svg, network_note=map_note,
                    interactive=interactive, cost=cost)
     if cost and args.cost_out:
@@ -173,7 +234,81 @@ def _bus_ids(net, buses) -> tuple[dict[int, str], bool]:
     return {b: f"Bus {labels[b] if use_names else b}" for b in buses}, use_names
 
 
-def _network_strength(args, net, rows, ids, result):
+def _resolve_plant_mva(args, basis: str) -> str | None:
+    """Set args.plant_mva from --plant-mva, --inverters x --inverter-mva, or --power-factor.
+
+    Returns a note on where the MVA came from (None when no MVA rating is given).
+    """
+    from .metrics import mva_source_text, plant_mva
+
+    mva, kind = plant_mva(args.plant_mw, mva=args.plant_mva, inverters=args.inverters,
+                          inverter_mva=args.inverter_mva, power_factor=args.power_factor,
+                          where="the scanned plant")
+    args.plant_mva = mva
+    args.mva_kind = kind
+    if basis == "MVA" and mva is None:
+        raise InputError("The MVA basis needs the plant's MVA rating. Give ONE of: --plant-mva 1650 "
+                         "(nameplate), --inverters 55 --inverter-mva 4.2 (55 × 4.2 MVA), or "
+                         "--power-factor 0.95 (an estimate: MW ÷ power factor).")
+    if mva is None:
+        return None
+    text = mva_source_text(args.plant_mw, mva, kind, args.inverters, args.inverter_mva, args.power_factor)
+    if basis != "MVA":
+        return (f"A plant MVA rating ({mva:,.1f} MVA) is available, but every ratio uses MW (the default); "
+                "add --basis MVA to use it.")
+    print(f"Plant MVA rating: {text}.")
+    return f"Plant MVA rating (used on the MVA basis): {text}."
+
+
+def _resize_groups(result, sizes, rating, thresholds):
+    """Recompute group WSCR with the member sizes from the groups file (others use `rating`)."""
+    from dataclasses import replace
+
+    from .metrics import classify, wscr
+
+    scm = {p.plant_id: p.scmva for p in result.plants}
+    out = []
+    for g in result.groups:
+        ps = [sizes.get(pid, rating) for pid in g.plant_ids]
+        ss = [scm[pid] for pid in g.plant_ids]
+        value = wscr(ss, ps)
+        out.append(replace(g, total_rating=sum(ps), wscr=value, flag=classify(value, thresholds).value,
+                           min_individual_scr=min(s / p for s, p in zip(ss, ps)), member_ratings=ps))
+    result.groups = out
+    return result
+
+
+def _apply_gen_out(args, net) -> str | None:
+    """Take the generators at the --gen-out buses out of service (a minimum-generation case)."""
+    if not getattr(args, "gen_out", None):
+        return None
+    from .netmap import bus_label
+
+    live = [int(b) for b in net.bus.index[net.bus["in_service"]]]
+    ids, _ = _bus_ids(net, live)
+    by_label = {pid[4:]: b for b, pid in ids.items()}
+    wanted = [x.strip() for x in args.gen_out.split(",") if x.strip()]
+    wanted = [w[4:].strip() if w.lower().startswith("bus ") else w for w in wanted]
+    if not wanted:
+        raise InputError("--gen-out needs at least one bus label, e.g. --gen-out 30,32.")
+    taken = []
+    for w in wanted:
+        if w not in by_label:
+            raise InputError(f"--gen-out: bus {w} not found. Use the bus labels shown in scan reports.")
+        b = by_label[w]
+        mask = (net.gen["bus"] == b) & net.gen["in_service"] if len(net.gen) else []
+        if not len(net.gen) or not bool(mask.any()):
+            if len(net.ext_grid) and bool(((net.ext_grid["bus"] == b) & net.ext_grid["in_service"]).any()):
+                raise InputError(f"--gen-out: bus {w} has an external grid (a network equivalent), not a "
+                                 "generator unit; it cannot be taken out with --gen-out.")
+            raise InputError(f"--gen-out: bus {w} has no in-service generator.")
+        net.gen.loc[mask, "in_service"] = False
+        taken.append(f"Bus {w}")
+    return ("Minimum-generation case: the generators at " + ", ".join(taken) + " were taken out of service "
+            "for this scan (--gen-out), so their short-circuit contribution is excluded.")
+
+
+def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
     """SCRIF and CSCR for groups, ESCR where capacitors exist, and N-1 worst case.
 
     Returns (updated result, extra data for the live report, notes). Interaction
@@ -185,7 +320,8 @@ def _network_strength(args, net, rows, ids, result):
     from .classical import build_zbus
     from .strength import capacitor_mvar, composite_scmva, interaction_matrix, interaction_sums, n1_worst
 
-    extra = {"ifsum": {}, "cscmva": {}, "n1": {}, "n1_outage": {}, "qc": {}}
+    extra = {"ifsum": {}, "ifm": {}, "cscmva": {}, "n1": {}, "n1_outage": {}, "qc": {}}
+    sizes = sizes or {}
     notes: list[str] = []
     caps = {b: q for b, q in capacitor_mvar(net).items() if b in ids}
     if not (result.groups or args.n1 or caps):
@@ -202,25 +338,35 @@ def _network_strength(args, net, rows, ids, result):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             zb = build_zbus(net)
-    p_mw = args.plant_mw
+    p_mw = rating if rating is not None else args.plant_mw  # plant size on the chosen basis
+    unit = args.basis.upper() if getattr(args, "basis", None) else "MW"
     pid_bus = {ids[r.bus]: r.bus for r in rows}
     scm = {r.bus: r.scmva for r in rows}
     plant_upd: dict[str, dict] = {}
-    group_upd: dict[str, float] = {}
+    group_upd: dict[str, dict] = {}
     if zb is not None and result.groups:
         for g in result.groups:
             buses = [pid_bus[p] for p in g.plant_ids]
-            sums = interaction_sums(interaction_matrix(zb, buses), buses)
+            ifs = interaction_matrix(zb, buses)
+            sums = interaction_sums(ifs, buses)
+            size = {b: sizes.get(pid, p_mw) for pid, b in zip(g.plant_ids, buses)}
+            member_scrif = []
             for pid, b in zip(g.plant_ids, buses):
-                plant_upd.setdefault(pid, {})["scrif"] = scm[b] / (p_mw * (1 + sums[b]))
+                value = scm[b] / (size[b] + sum(ifs[(b, j)] * size[j] for j in buses if j != b))
+                member_scrif.append(value)
+                if pid not in sizes:  # the results table shows SCRIF only for members of the scan's size
+                    plant_upd.setdefault(pid, {})["scrif"] = value
                 extra["ifsum"][pid] = sums[b]
+                extra["ifm"][pid] = {qid: ifs[(b, j)] for qid, j in zip(g.plant_ids, buses) if j != b}
             cs = composite_scmva(zb, buses)
-            group_upd[g.group] = cs / (len(buses) * p_mw)
+            group_upd[g.group] = {"cscr": cs / sum(size.values()), "member_scrif": member_scrif}
             extra["cscmva"][g.group] = cs
         notes.append("SCRIF_i = SCMVA_i ÷ (P_i + Σ IF_ij·P_j), with interaction factors IF_ij = |Z_ij ÷ Z_jj| "
                      "from the classical network impedance matrix (NERC Reliability Guideline, 2017). "
-                     "CSCR = short-circuit MVA with the group's POIs tied together ÷ total MW; NERC's "
-                     "definition ties the plants' medium-voltage buses, which are not in a transmission model.")
+                     f"CSCR = short-circuit MVA with the group's POIs tied together ÷ total {unit}; NERC's "
+                     "definition ties the plants' medium-voltage buses, which are not in a transmission model"
+                     + (", and divides by the plants' nominal MVA ratings (use --basis MVA to match)."
+                        if unit == "MW" else ", and divides by the plants' nominal MVA ratings, as here."))
     if zb is not None and args.n1:
         n1 = n1_worst(zb, [r.bus for r in rows], label=lambda b: ids.get(b, f"Bus {b}"))
         for r in rows:
@@ -228,8 +374,8 @@ def _network_strength(args, net, rows, ids, result):
             plant_upd.setdefault(pid, {}).update(n1_scr=n1.scmva[r.bus] / p_mw, n1_outage=n1.outage[r.bus])
             extra["n1"][pid] = n1.scmva[r.bus]
             extra["n1_outage"][pid] = n1.outage[r.bus]
-        notes.append(f"N-1: each of {n1.studied} line circuits and transformer units was removed in turn "
-                     "(classical method); the lowest short-circuit MVA at each bus and the outage causing it are "
+        notes.append(f"N-1: each of {n1.studied} line circuits, transformer units and generator units was "
+                     "removed in turn (classical method); the lowest short-circuit MVA at each bus and the outage causing it are "
                      "shown." + (f" {len(n1.skipped)} outage(s) were skipped because they would leave buses "
                                  "with no source: " + "; ".join(n1.skipped[:6])
                                  + (" …" if len(n1.skipped) > 6 else "") + "." if n1.skipped else ""))
@@ -239,10 +385,11 @@ def _network_strength(args, net, rows, ids, result):
             qc = caps.get(r.bus, 0.0)
             plant_upd.setdefault(pid, {})["escr"] = (r.scmva - qc) / p_mw
             extra["qc"][pid] = qc
-        notes.append("ESCR = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant MW, using the network's "
-                     "in-service capacitor banks.")
+        notes.append(f"ESCR = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant {unit}, using the network's "
+                     "in-service capacitor banks (the classical 'Effective SCR'; NERC 2017 notes it is distinct "
+                     "from the 'Equivalent SCR' of CIGRE, which is SCRIF).")
     result.plants = [replace(p, **plant_upd[p.plant_id]) if p.plant_id in plant_upd else p for p in result.plants]
-    result.groups = [replace(g, cscr=group_upd[g.group]) if g.group in group_upd else g for g in result.groups]
+    result.groups = [replace(g, **group_upd[g.group]) if g.group in group_upd else g for g in result.groups]
     return result, extra, notes
 
 
@@ -303,17 +450,22 @@ def _cmd_interactions(args) -> int:
 
 def _scan_groups(args, ids) -> dict[str, str]:
     """{plant_id: group} from --groups, checked against the scanned buses."""
+    return {pid: g for pid, (g, _, _) in _scan_groups_full(args, ids).items()}
+
+
+def _scan_groups_full(args, ids) -> dict[str, tuple]:
+    """{plant_id: (group, mw or None, mva or None)} from --groups, checked against the scanned buses."""
     if not args.groups:
         return {}
-    from .io import read_bus_groups_csv
+    from .io import read_bus_groups_full
 
     by_label = {pid[4:]: pid for pid in ids.values()}
-    raw = read_bus_groups_csv(_existing(args.groups, "Groups file"))
+    raw = read_bus_groups_full(_existing(args.groups, "Groups file"))
     unknown = [b for b in raw if b not in by_label]
     if unknown:
         raise InputError(f"Groups file lists bus(es) not in the scan: {', '.join(unknown[:8])}. "
                          "Use the bus labels shown in the scan report.")
-    return {by_label[b]: g for b, g in raw.items()}
+    return {by_label[b]: v for b, v in raw.items()}
 
 
 def _existing(path, what: str) -> Path:
@@ -345,7 +497,7 @@ def _cost_screening(args, result, thresholds):
         raise InputError(f"Site cost file lists bus(es) not in the scan: {', '.join(unknown[:8])}. "
                          "Use the bus labels shown in the scan (see 'scr-screen sites-template').")
     inputs = CostInputs(
-        plant_mw=args.plant_mw,
+        plant_mw=_scan_rating(args),
         target_scr=args.target_scr if args.target_scr is not None else thresholds.weak_below,
         condenser_xdss_pu=args.condenser_xdss, condenser_xt_pu=args.condenser_xt,
         condenser_cost_per_mva=args.condenser_cost_per_mva,
@@ -355,14 +507,19 @@ def _cost_screening(args, result, thresholds):
             "target_follows_weak": args.target_scr is None}
 
 
-def _print_costs(rows, n=10):
+def _scan_rating(args) -> float:
+    """The plant size used in every ratio: MVA on the MVA basis, else MW."""
+    return args.plant_mva if getattr(args, "basis", "MW").upper() == "MVA" else args.plant_mw
+
+
+def _print_costs(rows, n=10, unit="MW"):
     def money(v):
         return "-" if v is None else f"${v / 1e6:,.1f}M"
     print(f"\nCost screening (cheapest first, top {min(n, len(rows))}):")
     print(f"{'#':>3} {'Bus':<12}{'SCR':>7}{'Target':>15}{'Cond. MVA':>11}{'Cond. cost':>12}{'Gen-tie':>10}{'POI':>9}{'Total':>11}")
     for i, r in enumerate(rows[:n], start=1):
         flag = "" if r.complete else "  (incomplete)"
-        tc = "meets" if r.meets_target else f"max {r.max_at_target_mw:,.0f} MW"
+        tc = "meets" if r.meets_target else f"max {r.max_at_target_mw:,.0f} {unit}"
         print(f"{i:>3} {r.bus_id[:11]:<12}{r.scr:>7.2f}{tc:>15}{r.condenser_mva:>11.1f}{money(r.condenser_cost):>12}"
               f"{money(r.gen_tie_cost):>10}{money(r.poi_cost):>9}{money(r.total_cost):>11}{flag}")
     below = [r for r in rows if not r.meets_target]
@@ -465,7 +622,8 @@ def _print_summary(result: ScreeningResult) -> None:
     for g in result.groups:
         extra = f"; CSCR {g.cscr:.3f}" if g.cscr is not None else ""
         print(f"Group {g.group}: WSCR {g.wscr:.3f} ({g.flag}){extra}; plants {', '.join(g.plant_ids)}")
-        scrifs = [f"{pid} {by_id[pid].scrif:.3f}" for pid in g.plant_ids if by_id[pid].scrif is not None]
+        scrifs = ([f"{pid} {v:.3f}" for pid, v in zip(g.plant_ids, g.member_scrif)]
+                  if g.member_scrif is not None else [])
         if scrifs:
             print("  SCRIF (network-aware): " + ", ".join(scrifs))
     n1 = [p for p in result.plants if p.n1_scr is not None]
@@ -508,6 +666,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="screen plants listed in a CSV file (direct mode)")
     r.add_argument("csv", help="input CSV (see 'scr-screen template')")
+    r.add_argument("--power-factor", type=float, metavar="PF",
+                   help="ESTIMATE the MVA of plants with no MVA rating as MW ÷ PF (e.g. 0.95 at the POI)")
     r.add_argument("--basis", choices=["MW", "MVA", "mw", "mva"], default="MW",
                    help="rating basis (default MW)")
     common(r)
@@ -539,6 +699,18 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("network", help="network file: .json (pandapower), .xlsx (pandapower Excel), "
                    ".m or .mat (MATPOWER)")
     s.add_argument("--plant-mw", type=float, required=True, help="plant size to screen at each bus")
+    s.add_argument("--plant-mva", type=float, metavar="MVA",
+                   help="plant nameplate MVA rating (aggregate inverter MVA), for --basis MVA")
+    s.add_argument("--inverters", type=float, metavar="N",
+                   help="number of inverters; with --inverter-mva gives nameplate MVA = N × inverter MVA")
+    s.add_argument("--inverter-mva", type=float, metavar="MVA", help="nameplate MVA of each inverter")
+    s.add_argument("--power-factor", type=float, metavar="PF",
+                   help="ESTIMATE the MVA as plant MW ÷ PF (e.g. 0.95 required at the POI) when the "
+                        "nameplate is not known; nameplate MVA is usually higher (more conservative)")
+    s.add_argument("--basis", choices=["MW", "MVA", "mw", "mva"], default="MW",
+                   help="rating basis for every ratio (default MW; MVA gives NERC's WSCR-MVA and MVA-based CSCR)")
+    s.add_argument("--gen-out", metavar="LIST",
+                   help="take the generators at these buses out of service, e.g. 30,32 (minimum-generation case)")
     s.add_argument("--method", choices=["classical", "iec60909"], default="classical",
                    help="short-circuit method (default classical)")
     s.add_argument("--case", choices=["max", "min"], default="max",
@@ -550,8 +722,8 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--n1", action="store_true",
                    help="also find each bus's worst single outage (N-1) SCR (classical method)")
     s.add_argument("--groups", metavar="CSV",
-                   help="screen buses together with WSCR: CSV with columns bus, group "
-                        "(each bus gets a plant of --plant-mw)")
+                   help="screen buses together with WSCR: CSV with columns bus, group, and optional "
+                        "mw, mva for a member's own size (e.g. an existing plant, or a STATCOM with mw 0)")
     g = s.add_argument_group("cost screening (optional; all costs are your own inputs)")
     g.add_argument("--cost", action="store_true", help="add cost screening (condenser sizing) to the scan")
     g.add_argument("--site-costs", metavar="CSV", help="per-bus distance_mi and poi_cost_usd "

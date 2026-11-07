@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scr-screen"
-version = "0.3.0"
+version = "0.3.1"
 description = "Short-circuit ratio (SCR/WSCR) screening for inverter-based resource interconnection"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Shaibu Ibrahim, P.E.", email = "ishaibu136@gmail.com" }]
+authors = [{ name = "Shaibu Ibrahim, P.E." }]
 keywords = ["power-systems", "short-circuit-ratio", "grid-interconnection", "inverter-based-resources"]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -33,7 +33,7 @@ width:auto;height:auto;margin:0;outline:0;-webkit-appearance:none;appearance:non
 #scr-lite input{all:unset;box-sizing:border-box;display:block;width:100%;min-width:0;font:14px/1.3 var(--f);
 font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);min-height:36px;box-shadow:none;margin:0;height:auto;max-width:none;
 -webkit-appearance:none;appearance:none}
-#scr-lite input[type=number]{text-align:right}
+#scr-lite input[type=number],#scr-lite input[data-f=mva]{text-align:right}
 #scr-lite input::placeholder{color:var(--muted);opacity:.8}
 #scr-lite input.bad{border-color:var(--vw);box-shadow:0 0 0 1px var(--vw)}
 #scr-lite :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -58,15 +58,23 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 #scr-lite .plant .c-id{grid-column:1 / -1;padding-right:36px}
 #scr-lite .plant .c-del{position:absolute;top:6px;right:6px}
 @container lite (min-width:720px){
-  #scr-lite .head,#scr-lite .plant{display:grid;grid-template-columns:minmax(90px,1.2fr) minmax(90px,1fr) minmax(80px,.9fr) minmax(64px,.7fr) minmax(70px,.8fr) minmax(110px,1.2fr) 40px;gap:8px;align-items:center}
+  #scr-lite .head,#scr-lite .plant{display:grid;grid-template-columns:minmax(90px,1.2fr) minmax(90px,1fr) minmax(76px,.85fr) minmax(76px,.85fr) minmax(64px,.7fr) minmax(70px,.8fr) minmax(110px,1.2fr) 40px;gap:8px;align-items:center}
   #scr-lite .head{font-size:13px;color:var(--muted);font-weight:500;padding:0 0 6px;border-bottom:1px solid var(--line);align-items:end}
-  #scr-lite .head span:nth-child(n+2):nth-child(-n+3),#scr-lite .head span:nth-child(5),#scr-lite .head span:nth-child(6){text-align:right}
+  #scr-lite .head span:nth-child(n+2):nth-child(-n+4),#scr-lite .head span:nth-child(6),#scr-lite .head span:nth-child(7){text-align:right}
   #scr-lite .plant{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:6px 0;margin:0}
   #scr-lite .plant label span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   #scr-lite .plant .c-id{grid-column:auto;padding-right:0}
   #scr-lite .plant .c-del{position:static}
 }
 #scr-lite .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#scr-lite .basis{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px}
+#scr-lite .basis .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#scr-lite .basis .seg button{border:0;border-radius:0;min-height:34px;padding:6px 16px}
+#scr-lite .basis .seg button[aria-pressed=true]{background:var(--accent);color:#fff}
+#scr-lite .basis .lbl{font-size:14px;font-weight:600}
+#scr-lite .note-ex{font-size:13px;color:var(--muted);min-height:0;margin-top:4px}
+#scr-lite .basis label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+#scr-lite .basis label input{width:90px}
 #scr-lite .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}
 #scr-lite .settings label{font-size:13px;color:var(--muted);display:block}
 #scr-lite .settings input{margin-top:3px}
@@ -149,7 +157,11 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 <div class="block">
   <h2>Your plants</h2>
   <p class="hint">Short-circuit MVA should exclude inverter-based resources (as NERC defines SCR). Plants with the same group label are also screened together (WSCR).</p>
-  <div class="head" aria-hidden="true"><span>Plant</span><span>Short-circuit MVA</span><span>Rating (MW)</span><span>Group</span><span>Gen-tie (mi)</span><span>POI cost ($)</span><span></span></div>
+  <div class="basis"><span class="lbl" id="basis-lbl">Rating basis</span>
+    <span class="seg" role="group" aria-labelledby="basis-lbl"><button type="button" data-basis="MW" aria-pressed="true">MW</button><button type="button" data-basis="MVA" aria-pressed="false">MVA</button></span>
+    <label>Power factor at POI (optional)<input type="number" data-k="pf" min="0" max="1" step="any" placeholder="e.g. 0.95" inputmode="decimal" title="Estimates a blank MVA as MW ÷ power factor"></label>
+    <span class="hint">MVA is the nameplate (inverter) rating, as NERC's WSCR-MVA uses. Type it, or the inverter count × each inverter's MVA (e.g. <b>55×4.2</b> = 231 MVA). If it is not known yet, enter the power factor required at the POI to <b>estimate</b> it as MW ÷ power factor; nameplate MVA is usually higher, which gives lower (more conservative) ratios. A device with no active power (such as a STATCOM) is entered with 0 MW and its MVA; it counts only on the MVA basis.</span></div>
+  <div class="head" aria-hidden="true"><span>Plant</span><span>Short-circuit MVA</span><span>Rating (MW)</span><span>Nameplate (MVA)</span><span>Group</span><span>Gen-tie (mi)</span><span>POI cost ($)</span><span></span></div>
   <div class="rows"></div>
   <div class="actions">
     <button type="button" class="primary" data-act="add">Add plant</button>
@@ -157,6 +169,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     <button type="button" data-act="clear">Clear all</button>
   </div>
   <div class="msg" role="status" aria-live="polite"></div>
+  <div class="note-ex" role="status" aria-live="polite"></div>
 
   <h3>Flag thresholds (SCR)</h3>
   <div class="settings">
@@ -202,7 +215,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     <div>
       <h3>Each plant on its own (SCR)</h3>
       <div class="scroll"><table class="res">
-        <thead><tr><th>Plant</th><th class="n">SCR</th><th>Flag (screening bands)</th><th class="n" title="Largest plant before a weak flag = SCMVA ÷ weak threshold">Max size, no flag (MW)</th>
+        <thead><tr><th>Plant</th><th class="n">SCR</th><th>Flag (screening bands)</th><th class="n" title="Largest plant before a weak flag = SCMVA ÷ weak threshold">Max size, no flag (<span class="u">MW</span>)</th>
         <th class="cost">Target check</th><th class="n cost">Condenser (MVA)</th><th class="n cost">SCR after condenser</th><th class="n cost">Total cost</th></tr></thead>
         <tbody></tbody></table></div>
       <p class="hint cost" style="margin-top:6px">* Incomplete: a needed cost rate is blank.</p>
@@ -215,7 +228,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
 </div>
 
 <div class="foot">
-  <p><b>How it is calculated.</b> SCR = short-circuit MVA ÷ plant MW. WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the plants in a group are fully interacting (ERCOT/NERC). Max size (largest plant before a weak flag) = SCMVA ÷ weak threshold. Condenser MVA = max(0, MW × target SCR − SCMVA) × (X″d + Xt), assuming the condenser is at the point of interconnection. Default flag bands follow HVDC planning practice (IEEE Std 1204-1997); there is no universal weak-grid threshold.</p>
+  <p><b>How it is calculated.</b> SCR = short-circuit MVA ÷ plant rating P (MW, or MVA on the MVA basis). WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the plants in a group are fully interacting (ERCOT/NERC; NERC describes it on both the MW and the MVA basis). Max size (largest plant before a weak flag) = SCMVA ÷ weak threshold. Condenser MVA = max(0, P × target SCR − SCMVA) × (X″d + Xt), assuming the condenser is at the point of interconnection. Default flag bands follow HVDC planning practice (IEEE Std 1204-1997); there is no universal weak-grid threshold.</p>
   <p><b>Screening only.</b> Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the transmission provider's requirements. SCR-based metrics assume grid-following inverters and do not replace the inverter manufacturer's minimum SCR. Cost screening excludes network upgrades, which are often the largest interconnection cost.</p>
   <p>To calculate short-circuit MVA from a network model, scan every bus, and compare methods, use the full <a href="https://github.com/ishaibu/scr-screen" target="_blank" rel="noopener">SCR-Screen</a> tool. Created by Shaibu Ibrahim, P.E. · MIT License.</p>
 </div>
@@ -228,11 +241,12 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
   var $=function(s){return root.querySelector(s);}, $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
   var K=function(k){return root.querySelector('[data-k="'+k+'"]');};
   var EXAMPLE=[
-    {id:"PV-A",scmva:1000,mw:200,group:"G1",dist:12,poi:18000000},
-    {id:"BESS-B",scmva:600,mw:100,group:"G1",dist:12,poi:0},
-    {id:"Wind-C",scmva:485.86,mw:100,group:"",dist:8,poi:15000000},
-    {id:"PV-D",scmva:150,mw:100,group:"",dist:4,poi:15000000}];
-  var rowsEl=$(".rows"), resBody=$(".res tbody"), groupsEl=$(".groups"), msg=$(".msg");
+    {id:"PV-A",scmva:1000,mw:200,mva:210,group:"G1",dist:12,poi:18000000},
+    {id:"BESS-B",scmva:600,mw:100,mva:105,group:"G1",dist:12,poi:0},
+    {id:"Wind-C",scmva:485.86,mw:100,mva:105,group:"",dist:8,poi:15000000},
+    {id:"PV-D",scmva:150,mw:100,mva:105,group:"",dist:4,poi:15000000}];
+  var BASIS="MW";
+  var rowsEl=$(".rows"), resBody=$(".res tbody"), groupsEl=$(".groups"), msg=$(".msg"), noteEx=$(".note-ex");
   var NAME={vw:"Very weak",wk:"Weak",ok:"No flag"};
   function fmt(v,d){return v.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});}
   function money(v){if(v===null)return "\u2014";var a=Math.abs(v);
@@ -241,6 +255,11 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
   function num(el,o){var t=el.value.trim(); if(t===""&&o.empty)return {ok:true,v:null};
     var v=+t; return {ok:t!==""&&isFinite(v)&&(o.zero?v>=0:v>0),v:v};}
+  // Nameplate MVA cell: a number, or inverter count × each inverter's MVA ("55x4.2", "55*4.2", "55×4.2").
+  function mvaCell(el){var t=el.value.trim(); if(t==="")return {ok:true,v:null};
+    var m=t.match(/^(\d+)\s*[x\u00d7*]\s*(\d*\.?\d+(?:e[+-]?\d+)?)$/i);
+    if(m){var n=+m[1],x=+m[2]; return {ok:n>0&&x>0&&isFinite(x),v:n*x,inv:true};}
+    var v=+t; return {ok:isFinite(v)&&v>0,v:v};}
   function v0(x){return x===null||x===undefined?"":x;}
   function field(cls,label,type,val,extra){return '<label class="'+cls+'"><span>'+label+'</span><input type="'+type+'" '+(extra||"")+' value="'+esc(v0(val))+'"></label>';}
   function addRow(p){
@@ -249,6 +268,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     d.innerHTML=field("c-id","Plant","text",p.id,'data-f="id"')+
       field("c-sc","Short-circuit MVA","number",p.scmva,'data-f="sc" min="0" step="any" inputmode="decimal"')+
       field("c-mw","Rating (MW)","number",p.mw,'data-f="mw" min="0" step="any" inputmode="decimal"')+
+      field("c-mva","Nameplate (MVA)","text",p.mva,'data-f="mva" autocomplete="off" spellcheck="false" placeholder="optional" title="Nameplate MVA, or inverters × MVA each, e.g. 55×4.2"')+
       field("c-g","Group","text",p.group,'data-f="g"')+
       field("c-d","Gen-tie (mi)","number",p.dist,'data-f="d" min="0" step="any" inputmode="decimal"')+
       field("c-p","POI cost ($)","number",p.poi,'data-f="p" min="0" step="any" inputmode="decimal"')+
@@ -256,36 +276,50 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     rowsEl.appendChild(d); return d;
   }
   function read(){
-    var errs=[], plants=[];
+    var errs=[], plants=[], left=[], est=[];
     function setting(k,o,name){var el=K(k),r=num(el,o);el.classList.toggle("bad",!r.ok);if(!r.ok)errs.push(name);return r.v;}
     var s={wk:setting("wk",{},"weak threshold"),vw:setting("vw",{},"very-weak threshold"),
       target:setting("target",{},"target SCR"),xd:setting("xd",{},"condenser X\u2033d"),xt:setting("xt",{zero:true},"transformer Xt"),
-      cpm:setting("cpm",{zero:true,empty:true},"condenser cost"),gtc:setting("gtc",{zero:true,empty:true},"gen-tie cost")};
+      cpm:setting("cpm",{zero:true,empty:true},"condenser cost"),gtc:setting("gtc",{zero:true,empty:true},"gen-tie cost"),
+      pf:setting("pf",{empty:true},"power factor (above 0, at most 1)")};
+    if(s.pf!==null&&s.pf>1){K("pf").classList.add("bad");errs.push("power factor (above 0, at most 1)");s.pf=null;}
     if(s.wk!==null&&s.vw!==null&&!(s.vw<s.wk)){K("vw").classList.add("bad");errs.push("very-weak threshold (must be below the weak threshold)");}
     $$(".plant").forEach(function(row,i){
       var f=function(n){return row.querySelector('[data-f="'+n+'"]');};
-      var sc=f("sc"),mw=f("mw"),d=f("d"),p=f("p"), blank=!sc.value.trim()&&!mw.value.trim();
-      var rs=num(sc,{}),rm=num(mw,{}),rd=num(d,{zero:true,empty:true}),rp=num(p,{zero:true,empty:true});
-      sc.classList.toggle("bad",!blank&&!rs.ok); mw.classList.toggle("bad",!blank&&!rm.ok);
+      var sc=f("sc"),mw=f("mw"),mva=f("mva"),d=f("d"),p=f("p"), blank=!sc.value.trim()&&!mw.value.trim()&&!mva.value.trim();
+      var rs=num(sc,{}),rm=num(mw,{zero:true}),rv=mvaCell(mva),rd=num(d,{zero:true,empty:true}),rp=num(p,{zero:true,empty:true});
+      // A blank nameplate MVA can be ESTIMATED as MW ÷ power factor (not for 0 MW devices).
+      var estV=(rv.ok&&rv.v===null&&s.pf&&rm.ok&&rm.v>0)?rm.v/s.pf:null;
+      mva.placeholder=estV!==null?("\u2248 "+fmt(estV,1)+" (est.)"):"optional";
+      // 0 MW is allowed only for a device with a nameplate MVA (e.g. a STATCOM); the MVA basis needs every MVA rating.
+      var mwOk=rm.ok&&(rm.v>0||(rv.ok&&rv.v!==null)), mvaOk=rv.ok&&(BASIS!=="MVA"||rv.v!==null||estV!==null);
+      sc.classList.toggle("bad",!blank&&!rs.ok); mw.classList.toggle("bad",!blank&&!mwOk); mva.classList.toggle("bad",!blank&&!mvaOk);
       d.classList.toggle("bad",!rd.ok); p.classList.toggle("bad",!rp.ok);
       if(blank)return;
-      if(!rs.ok||!rm.ok||!rd.ok||!rp.ok){errs.push("plant "+(i+1));return;}
-      plants.push({id:f("id").value.trim()||("Plant "+(i+1)),scmva:rs.v,mw:rm.v,group:f("g").value.trim(),dist:rd.v,poi:rp.v});
+      var id=f("id").value.trim()||("Plant "+(i+1));
+      if(!rs.ok||!mwOk||!mvaOk||!rd.ok||!rp.ok){errs.push(id+(BASIS==="MVA"&&rv.ok&&rv.v===null?" (needs a nameplate MVA, or a power factor at the POI to estimate it, on the MVA basis)":""));return;}
+      if(BASIS==="MW"&&rm.v===0){left.push(id);return;}
+      var mvaV=rv.v!==null?rv.v:estV;
+      if(BASIS==="MVA"&&rv.v===null)est.push(id+" \u2248 "+fmt(estV,1)+" MVA");
+      plants.push({id:id,scmva:rs.v,mw:rm.v,mva:mvaV,r:BASIS==="MVA"?mvaV:rm.v,group:f("g").value.trim(),dist:rd.v,poi:rp.v});
     });
-    return {s:s,plants:plants,errs:errs};
+    return {s:s,plants:plants,errs:errs,left:left,est:est};
   }
   function flag(v,s){return v<s.vw?"vw":(v<s.wk?"wk":"ok");}
   var last=null;
   function calc(){
     var r=read(), s=r.s;
-    msg.textContent=r.errs.length?("Check: "+r.errs.join(", ")+". Values must be numbers above 0 (costs and distances can be 0 or blank)."):"";
+    msg.textContent=r.errs.length?("Check: "+r.errs.join(", ")+". Values must be numbers above 0 (costs and distances can be 0 or blank; MW can be 0 only with an MVA rating)."):"";
+    noteEx.textContent=(r.left.length?("Left out on the MW basis (0 MW): "+r.left.join(", ")+". Devices with no active power count only on the MVA basis. "):"")
+      +(r.est.length?("ESTIMATED MVA (MW \u00f7 power factor "+r.s.pf+"): "+r.est.join(", ")+". Nameplate MVA is usually higher, which gives lower (more conservative) ratios; enter it when known."):"");
+    $$(".u").forEach(function(e){e.textContent=BASIS;});
     if(s.wk===null||s.vw===null||!(s.vw<s.wk)||s.target===null||s.xd===null||s.xt===null)return;
     var costOn=$(".costbox").open;
     root.classList.toggle("cost-on",costOn);
     $$(".cost").forEach(function(e){e.style.display=costOn?"":"none";});
     var x=s.xd+s.xt;
     var rows=r.plants.map(function(p){
-      var scr=p.scmva/p.mw, cm=Math.max(0,p.mw*s.target-p.scmva)*x;
+      var scr=p.scmva/p.r, cm=Math.max(0,p.r*s.target-p.scmva)*x;
       var cc=cm===0?0:(s.cpm===null?null:cm*s.cpm), gc=p.dist===null?null:(s.gtc===null?null:p.dist*s.gtc);
       var parts=[cc,gc,p.poi].filter(function(v){return v!==null;});
       var after=cm>0?s.target:scr;   // the condenser lifts SCR exactly to the target; otherwise unchanged
@@ -309,9 +343,9 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
       var tr=document.createElement("tr");
       tr.innerHTML='<td data-label="Plant">'+esc(o.p.id)+'</td><td class="n" data-label="SCR">'+fmt(o.scr,2)+
         '</td><td data-label="Flag"><span class="pill '+o.f+'">'+NAME[o.f]+
-        '</span></td><td class="n" data-label="Max size, no flag (MW)">'+fmt(o.max,0)+'</td><td class="cost tc" data-label="Target check"'+hide+'>'+
+        '</span></td><td class="n" data-label="Max size, no flag ('+BASIS+')">'+fmt(o.max,0)+'</td><td class="cost tc" data-label="Target check"'+hide+'>'+
         (o.meets?'<span class="meet">✓ Meets</span>'
-          :'<span class="below">Below target</span><br>Max at target: <b>'+fmt(o.maxT,0)+' MW</b><br>or condenser: <b>'+fmt(o.cm,1)+' MVA</b>')+
+          :'<span class="below">Below target</span><br>Max at target: <b>'+fmt(o.maxT,0)+' '+BASIS+'</b><br>or condenser: <b>'+fmt(o.cm,1)+' MVA</b>')+
         '</td><td class="n cost" data-label="Condenser (MVA)"'+hide+">"+fmt(o.cm,1)+
         '</td><td class="n cost" data-label="SCR after condenser"'+hide+'>'+fmt(o.after,2)+(o.fa!=="ok"?' <span class="pill '+o.fa+'">'+NAME[o.fa]+'</span>':'')+
         '</td><td class="n cost" data-label="Total cost"'+hide+">"+money(o.tot)+(o.complete?"":" *")+"</td>";
@@ -322,11 +356,11 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
     groupsEl.innerHTML="";
     Object.keys(groups).forEach(function(name){
       var m=groups[name], a=0, den=0;
-      m.forEach(function(p){a+=p.scmva*p.mw;den+=p.mw;});
-      var w=a/(den*den), f=flag(w,s), minAlone=Math.min.apply(null,m.map(function(p){return p.scmva/p.mw;}));
+      m.forEach(function(p){a+=p.scmva*p.r;den+=p.r;});
+      var w=a/(den*den), f=flag(w,s), minAlone=Math.min.apply(null,m.map(function(p){return p.scmva/p.r;}));
       gres.push({name:name,w:w,f:f});
       var h='<div class="g"><b>Group '+esc(name)+"</b>";
-      m.forEach(function(p){var v=p.scmva/p.mw,fv=flag(v,s);h+='<div class="row"><span>'+esc(p.id)+' alone</span><span>'+fmt(v,2)+' <span class="pill '+fv+'">'+NAME[fv]+"</span></span></div>";});
+      m.forEach(function(p){var v=p.scmva/p.r,fv=flag(v,s);h+='<div class="row"><span>'+esc(p.id)+' alone</span><span>'+fmt(v,2)+' <span class="pill '+fv+'">'+NAME[fv]+"</span></span></div>";});
       h+='<div class="row tot"><span>Together (WSCR)</span><span>'+fmt(w,3)+' <span class="pill '+f+'">'+NAME[f]+"</span></span></div>";
       if(m.length>1&&w<minAlone)h+="<p>Screened together, strength is "+Math.round(100*(1-w/minAlone))+"% lower than the weakest plant alone.</p>";
       groupsEl.insertAdjacentHTML("beforeend",h+"</div>");
@@ -380,6 +414,7 @@ font-variant-numeric:tabular-nums;padding:7px 8px;border:1px solid var(--line);b
   root.addEventListener("click",function(e){
     var b=e.target.closest("button"); if(!b||!root.contains(b))return;
     if(b.classList.contains("del")){b.closest(".plant").remove();calc();return;}
+    if(b.dataset.basis){BASIS=b.dataset.basis;$$("[data-basis]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.basis===BASIS));});calc();return;}
     var act=b.dataset.act;
     if(act==="add"){var row=addRow();calc();row.querySelector("input").focus();}
     if(act==="example"){rowsEl.innerHTML="";EXAMPLE.forEach(addRow);K("cpm").value=100000;K("gtc").value=2000000;$(".costbox").open=true;calc();}

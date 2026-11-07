@@ -3,8 +3,8 @@
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | Current through v0.3.0 |
-| Last updated | 2026-11-01 |
+| Status | Current through v0.3.1 |
+| Last updated | 2026-11-07 |
 | License | MIT |
 
 ---
@@ -84,7 +84,7 @@ Each in-service line circuit (one circuit of a parallel entry) and transformer u
 
 $$Z'_{kk} = Z_{kk} + \frac{y\,(Zm)_k^2}{1 - y\,m^T Z m}$$
 
-Outages for which the denominator vanishes leave buses with no source; they are skipped and listed. Verified against rebuilding and re-inverting the network for every outage of the IEEE 39-bus case (agreement within 10⁻⁹).
+A generator unit (admittance y to ground at bus k) is removed the same way with m = e_k (v0.3.1). Outages for which the denominator vanishes leave buses with no source; they are skipped and listed. Verified against rebuilding and re-inverting the network for every outage of the IEEE 39-bus case (agreement within 10⁻⁹).
 
 ### 2.4 Largest plant before a weak flag
 
@@ -275,7 +275,12 @@ T11 is checked by running the report's code in a simulated browser during develo
 | D13 | Network-aware metrics | SCRIF, CSCR and N-1 from the classical Z-bus only; refused or omitted (with a note) when IEC 60909 is the primary method |
 | D14 | Group flag | Group flag and Flagged count stay on WSCR (most conservative); SCRIF and CSCR shown alongside |
 | D15 | Heat map | Blurred flag-colored circle per bus under the map; labeled as a visual aid, not a computed field |
-| D16 | IEEE 39-bus drawing | One-line positions shared with IBR-FaultScreen, stored in the example network's bus coordinates with a "drawing" marker |
+| D16 | IEEE 39-bus drawing | One-line positions following the commonly published diagram, stored in the example network's bus coordinates with a "drawing" marker |
+| D17 | MVA basis in scans (v0.3.1) | `--basis MVA` with `--plant-mva`; every ratio, the slider and cost screening use MVA. CSCR then divides by nominal MVA, as NERC defines it |
+| D18 | Devices with no active power (v0.3.1) | Entered as 0 MW plus an MVA rating; counted on the MVA basis, left out with a note on the MW basis (NERC Table 2.1: WSCR-MVA and SCRIF consider non-active inverter capacity) |
+| D19 | Group member sizes (v0.3.1) | Optional `mw`, `mva` columns in the groups file (both or neither). SCRIF for a fixed-size member is shown in the group panel only, since the results table row describes the scan's plant |
+| D20 | N-1 outages (v0.3.1) | Generator units added to lines and transformer units (Sherman–Morrison on one diagonal term); external grids are network equivalents and are not removed |
+| D21 | Plant MVA rating (v0.3.1) | Nameplate (inverter) MVA, as NERC's MVA metrics use; or inverters × inverter MVA; or an estimate MW ÷ power factor at the POI, labeled as an estimate (less conservative than nameplate). Only one source per plant; MW remains the default basis |
 
 ---
 

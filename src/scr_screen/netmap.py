@@ -189,8 +189,8 @@ def _positions(net, buses, edges):
             coords[b] = xy
     if coords and len({c for c in coords.values()}) > 1:
         if all(_is_drawing(net.bus.at[b, "geo"]) for b in buses):
-            return coords, ("Bus positions follow the usual one-line drawing of this network (shared with "
-                            "IBR-FaultScreen); they are a drawing, not geographic.")
+            return coords, ("Bus positions follow a one-line drawing of this network; they are a drawing, "
+                            "not geographic.")
         return coords, "Bus positions from the network's own coordinates."
 
     import networkx as nx

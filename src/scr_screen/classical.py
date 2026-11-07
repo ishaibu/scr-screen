@@ -39,7 +39,9 @@ class ZBus:
     z[pos[b], pos[k]] is the driving-point (b == k) or transfer impedance in pu.
     branches lists every in-service series element as (label, bus_a, bus_b, admittance_pu)
     of ONE circuit (an entry with parallel=2 contributes two circuits in Y), used for
-    N-1 outage screening.
+    N-1 outage screening. sources lists every in-service synchronous generator as
+    (label, bus, admittance_pu to ground), so generator outages can be screened too
+    (external grids are network equivalents, not units, and are not listed).
     """
 
     z: np.ndarray
@@ -47,6 +49,7 @@ class ZBus:
     isolated: list[int]
     notes: list[str]
     branches: list[tuple[str, int, int, complex]] = field(default_factory=list)
+    sources: list[tuple[str, int, complex]] = field(default_factory=list)
 
 
 def scmva_classical(net, bus_list: list[int], skip_isolated: bool = False
@@ -93,6 +96,7 @@ def build_zbus(net) -> ZBus:
 
     open_lines, open_trafos = _open_switches(net)
     branches: list[tuple[str, int, int, complex]] = []
+    sources: list[tuple[str, int, complex]] = []
 
     # --- Series branches: lines -------------------------------------------
     for idx, ln in net.line.iterrows():
@@ -158,7 +162,7 @@ def build_zbus(net) -> ZBus:
         rdss_ohm = g.get("rdss_ohm", 0.0)
         r_pu = 0.0 if not _is_nonneg(rdss_ohm) else rdss_ohm * S_BASE_MVA / vn**2
         x_pu = xdss * S_BASE_MVA / sn
-        _add_shunt(y, pos[b], complex(r_pu, x_pu), f"generator {idx}")
+        sources.append((f"generator {idx}", b, _add_shunt(y, pos[b], complex(r_pu, x_pu), f"generator {idx}")))
         n_sources += 1
 
     if n_sources == 0:
@@ -176,7 +180,7 @@ def build_zbus(net) -> ZBus:
         notes.append(f"{len(isolated)} bus(es) have no path to any source and were "
                      "excluded: " + ", ".join(str(b) for b in isolated[:20])
                      + (" ..." if len(isolated) > 20 else "") + ".")
-    return ZBus(z=z_bus, pos=pos, isolated=isolated, notes=notes, branches=branches)
+    return ZBus(z=z_bus, pos=pos, isolated=isolated, notes=notes, branches=branches, sources=sources)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +244,7 @@ def _add_shunt(y, i, z_pu, label):
     if abs(z_pu) == 0:
         raise InputError(f"{label} has zero impedance.")
     y[i, i] += 1.0 / z_pu
+    return 1.0 / z_pu
 
 
 def _open_switches(net, allow_bus_bus: bool = False):

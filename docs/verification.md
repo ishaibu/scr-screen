@@ -16,6 +16,7 @@ real project.
 | V1 | 2026-09-29 | IEEE 39-bus, bus 12, classical SCMVA | Hand calculation (two-port reduction) | Match |
 | V2 | 2026-10-17 | IEEE 39-bus, group G1 (buses 11 + 13), WSCR | Hand calculation from reported SCMVA | Match |
 | V3 | 2026-11-01 | IEEE 39-bus, group G1, interaction factors, SCRIF, CSCR | Hand calculation from impedance matrix | Match |
+| V4 | 2026-11-06 | IEEE 39-bus, MVA basis (WSCR-MVA, CSCR-MVA, SCRIF), STATCOM in a group, generator outage at bus 38 | Hand calculation | Match |
 
 ---
 
@@ -126,7 +127,9 @@ table, SCMVA column). Their accuracy is not part of this check (see below).
   network matrix checked in V1 and test M1.
 - That buses 11 and 13 are fully interacting. WSCR assumes they are; for
   buses electrically far apart the result is conservative. Methods that use
-  the network's mutual impedances (CSRC and SCRIF) were added in v0.3.0.; see V3
+  the network's mutual impedances (CSCR and SCRIF) were added in v0.3.0; see V3.
+
+---
 
 ## V3 — IEEE 39-bus, group G1 interaction factors, SCRIF and CSCR (buses 11 and 13)
 
@@ -207,4 +210,70 @@ as expected for two buses with interaction factors near 0.8.
 - N-1 results. These are checked by an automated test that rebuilds the
   network for every outage (agreement within 10⁻⁹), not by this hand check.
 
+---
 
+## V4 — IEEE 39-bus, MVA basis (WSCR-MVA, CSCR-MVA, SCRIF), a STATCOM in a group, and a generator outage
+
+**Date:** 2026-11-06 
+**Checked by:** Shaibu Ibrahim, P.E.
+**Tool version:** 0.3.1
+**Cases:**
+- A, C: `scr-screen scan ieee39_assumed.json --plant-mw 1500 --plant-mva 1650 --basis MVA --groups ieee39_groups_mva_example.csv`
+- B: `scr-screen scan ieee39_assumed.json --plant-mw 1500 --plant-mva 1650 --basis MVA --groups ieee39_groups_example.csv`
+- D: `scr-screen scan ieee39_assumed.json --plant-mw 1500 --n1`
+
+All with the documented assumed short-circuit data used in V1 to V3. The 200 MVA
+STATCOM at bus 12 is illustrative.
+
+### Why these cases
+v0.3.1 adds the MVA basis to network scans (NERC's WSCR-MVA, and CSCR divided by
+nominal MVA as NERC defines it), devices with no active power such as STATCOMs,
+and generator outages in N-1. Each is checked once by hand.
+
+### Method
+- **A. WSCR-MVA:** WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², with P in MVA, for buses 11 and 13
+  (1,650 MVA each) and the STATCOM at bus 12 (200 MVA, 0 MW). On the MW basis the
+  STATCOM is left out.
+- **B. CSCR-MVA:** CSCMVA (7,391.03 MVA, verified in V3) ÷ (1,650 + 1,650).
+- **C. SCRIF on the MVA basis:** SCRIFᵢ = SCMVAᵢ ÷ (Pᵢ + IF × Pⱼ), interaction factors from V3.
+- **D. Generator outage at the plant's own bus:** the rest of the network stays in
+  parallel, so the Thévenin admittance loses the generator's admittance:
+  Y′ = 1 ÷ Z₃₈,₃₈ − y_gen, and SCMVA′ = 100 × |Y′|.
+
+Snippet used to print Z₃₈,₃₈ and generator 7's data (run in the repository folder):
+
+    python -c "import pandapower as pp; from scr_screen.classical import build_zbus; net=pp.from_json('examples/ieee39_assumed.json'); zb=build_zbus(net); n={str(net.bus.at[b,'name']):int(b) for b in net.bus.index}; k=n['38']; print(zb.z[zb.pos[k],zb.pos[k]]); print(net.gen[net.gen.bus==k][['sn_mva','xdss_pu','rdss_ohm']])"
+
+### Results
+
+| Check | Hand calculation | SCR-Screen |
+|---|---|---|
+| A. WSCR-MVA, G1 with STATCOM | 22,318,568 ÷ 3,500² = **1.822** | 1.822 |
+| A. Same group, MW basis (STATCOM left out) | **2.197** | 2.197 |
+| B. CSCR-MVA, G1 | 7,391.03 ÷ 3,300 = **2.240** | 2.240 |
+| C. SCRIF bus 11 / bus 13, MVA basis | 6,712.87 ÷ 2,921.325 = **2.298** / 6,470.21 ÷ 2,969.010 = **2.179** | 2.298 / 2.179 |
+| D. Z₃₈,₃₈ | 0.0008897 + j0.0154951 pu (intact SCMVA 6,443.0) | 6,443.03 |
+| D. y_gen (generator 7: 1,017.65 MVA, X″d 0.20, R 1.16961 Ω at 345 kV) | 2.5378 − j50.7556 pu | — |
+| D. Y′ = 1/Z₃₈,₃₈ − y_gen | (3.6934 − j64.3245) − (2.5378 − j50.7556) = 1.1556 − j13.5689; magnitude 13.618 | — |
+| D. SCMVA with generator 7 out | **1,361.8 MVA** | 1,361.80 |
+| D. N-1 SCR at 1,500 MW | **0.908** (worst outage for bus 38: generator 7) | 0.908, generator 7 (Bus 38) |
+
+Hand values from rounded inputs agree with the tool to about four significant figures.
+Step-by-step working is in the V4 hand-calculation worksheet.
+
+**Outcome:** Match / 
+
+### What this proves
+- The MVA basis is applied to WSCR, CSCR and SCRIF in network scans, and CSCR then
+  matches NERC's definition (nominal MVA in the denominator).
+- A device with no active power counts on the MVA basis and is left out on the MW basis.
+- A generator outage is evaluated correctly for a plant at that generator's bus.
+
+### What this does not prove
+- The impedance matrix itself (V1 and test M1), or CSCMVA (V3).
+- Generator outages at other buses, and SCRIF for a three-member group. These are
+  checked by automated tests that rebuild the network for every outage and compute
+  SCRIF from the impedance matrix directly.
+- Whether a STATCOM's own SCRIF is a meaningful acceptance criterion for that device.
+  NERC's table credits SCRIF and WSCR-MVA with considering non-active inverter
+  capacity; the tool reports the value and leaves its use to the engineer.

@@ -150,6 +150,7 @@ SCRIPT = r"""
 var cfgEl=document.getElementById('scr-cfg'); if(!cfgEl) return;
 var cfg=JSON.parse(cfgEl.textContent), C0=cfg.cost||null;
 var S={};
+var U=cfg.unit||'MW';
 function init(){S.mw=cfg.mw;S.vw=cfg.vw;S.wk=cfg.wk;
   if(C0){S.target=C0.target;S.xd=C0.xd;S.xt=C0.xt;S.cpm=C0.cpm;S.gtc=C0.gtc;S.follow=C0.follow;}}
 init();
@@ -179,24 +180,30 @@ function update(){
   var lv=q('#card-low'); if(lv){lv.textContent=f(low,2);lv.className='v '+flag(low);}
   // Groups screened together: every member has the slider's plant size.
   var G={}, glow=null, gflag=0, ng=0;
+  // Members with a size in the groups file (data-p) keep it; the others use the slider's size.
+  var SCRIF={};
   qa('.gbox[data-g]').forEach(function(b){
-    var lines=qa('.gline.mem[data-scmva]',b), n=lines.length, sum=0, mn=Infinity;
-    qa('.gline.scrif',b).forEach(function(l){var v=+l.dataset.s/(mw*(1+(+l.dataset.ifsum)));
+    var lines=qa('.gline.mem[data-scmva]',b), n=lines.length, sum=0, tot=0, mn=Infinity, P={};
+    lines.forEach(function(l){var s=+l.dataset.scmva, p=l.dataset.p?+l.dataset.p:mw, v=s/p;
+      P[l.dataset.pid]=p; sum+=s*p; tot+=p; mn=Math.min(mn,v);
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
-    qa('.gline.cscr',b).forEach(function(l){var v=+l.dataset.cs/(+l.dataset.n*mw);
+    qa('.gline.scrif',b).forEach(function(l){var ifm=l.dataset.if?JSON.parse(l.dataset.if):null, v;
+      if(ifm){var d=P[l.dataset.pid]; for(var k in ifm){if(P[k]!==undefined) d+=ifm[k]*P[k];} v=+l.dataset.s/d;}
+      else v=+l.dataset.s/(mw*(1+(+l.dataset.ifsum)));
+      if(l.dataset.pid) SCRIF[l.dataset.pid]=v;
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
-    lines.forEach(function(l){var s=+l.dataset.scmva, v=s/mw; sum+=s; mn=Math.min(mn,v);
+    qa('.gline.cscr',b).forEach(function(l){var v=+l.dataset.cs/tot;
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
-    var w=sum*mw/Math.pow(n*mw,2), c=flag(w), tl=q('.gline.total',b);
+    var w=sum/(tot*tot), c=flag(w), tl=q('.gline.total',b);
     q('.val',tl).textContent=f(w,2); pill(q('.pill',tl),c);
     var dn=q('.g-drop',b);
     if(dn){if(w<mn){dn.textContent='Screened together, strength is '+(100*(1-w/mn)).toFixed(0)+'% lower than the weakest plant alone.';dn.style.display='';}
       else{dn.textContent='';dn.style.display='none';}}
-    G[b.dataset.g]={w:w,c:c,n:n}; ng++; if(c!=='ok') gflag++;
+    G[b.dataset.g]={w:w,c:c,n:n,tot:tot}; ng++; if(c!=='ok') gflag++;
     if(!glow||w<glow.w) glow={w:w,c:c,name:b.dataset.g};});
   qa('tr.gres').forEach(function(t){var d=G[t.dataset.g]; if(!d) return;
-    var cc=q('.c-cscr',t); if(cc&&t.dataset.cs){var v=+t.dataset.cs/(d.n*mw);cc.querySelector('.val').textContent=f(v,3);pill(q('.c-cscr .pill',t),flag(v));}
-    q('.c-grating',t).textContent=(d.n*mw).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+    var cc=q('.c-cscr',t); if(cc&&t.dataset.cs){var v=+t.dataset.cs/d.tot;cc.querySelector('.val').textContent=f(v,3);pill(q('.c-cscr .pill',t),flag(v));}
+    q('.c-grating',t).textContent=(d.tot).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
     q('.c-wscr',t).textContent=f(d.w,3); pill(q('.pill',t),d.c);});
   var gv=q('#card-glow'); if(gv&&glow){gv.textContent=f(glow.w,2);gv.className='v '+glow.c;
     var gn=q('#card-glow-name'); if(gn) gn.textContent='Group '+glow.name;}
@@ -204,7 +211,7 @@ function update(){
   var nc=q('#card-n1'); if(nc&&n1v.length){var m=Math.min.apply(null,n1v);nc.textContent=f(m,2);nc.className='v '+flag(m);}
   qa('tr.res').forEach(function(t){
     var c1=q('.c-n1',t); if(c1&&t.dataset.n1){var v=+t.dataset.n1/mw;q('.val',c1).textContent=f(v,3);pill(q('.pill',c1),flag(v));}
-    var c2=q('.c-scrif',t); if(c2&&t.dataset.ifsum){var v2=+t.dataset.scmva/(mw*(1+(+t.dataset.ifsum)));q('.val',c2).textContent=f(v2,3);pill(q('.pill',c2),flag(v2));}
+    var c2=q('.c-scrif',t); if(c2&&t.dataset.ifsum){var v2=(t.dataset.pid in SCRIF)?SCRIF[t.dataset.pid]:+t.dataset.scmva/(mw*(1+(+t.dataset.ifsum)));q('.val',c2).textContent=f(v2,3);pill(q('.pill',c2),flag(v2));}
     var c3=q('.c-escr',t); if(c3&&t.dataset.qc!==undefined){var v3=(+t.dataset.scmva-(+t.dataset.qc))/mw;c3.textContent=f(v3,3);}});
   qa('tr.n1row').forEach(function(t){var v=+t.dataset.n1/mw;q('.val',t).textContent=f(v,3);pill(q('.pill',t),flag(v));
     var vi=+t.dataset.scmva/mw;q('.k-int',t).textContent=f(vi,3);});
@@ -220,7 +227,7 @@ function update(){
     var cm=q('.c-max',t); if(cm) cm.textContent=(+t.dataset.scmva/S.wk).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});});
   var caps=qa('.cap-row'), cmax=Math.max.apply(null,caps.map(function(r){return +r.dataset.scmva;}).concat([1]));
   caps.forEach(function(r){var v=+r.dataset.scmva/S.wk;q('.bar',r).style.width=Math.max(+r.dataset.scmva/cmax*100,0.8)+'%';
-    q('.val',r).textContent=Math.round(v).toLocaleString('en-US')+' MW';});
+    q('.val',r).textContent=Math.round(v).toLocaleString('en-US')+' '+U;});
   var labels=q('.netmap .labels');
   if(labels){while(labels.firstChild) labels.removeChild(labels.firstChild);}
   var gs=qa('.netmap g.bus[data-scmva]');
@@ -281,7 +288,7 @@ function costUpdate(resort){
     q('.k-scr',t).textContent=f(d.scr,2); q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
     q('.k-after',t).textContent=f(d.cm>0?S.target:d.scr,2);
     q('.k-tc',t).innerHTML=d.meets?"<span class='meet'>\u2713 Meets</span>":"<span class='below'>Below target</span><br>Max at target: <b>"+
-      Math.round(d.maxT).toLocaleString('en-US')+" MW</b><br>or condenser: <b>"+num(d.cm)+" MVA</b>";
+      Math.round(d.maxT).toLocaleString('en-US')+" "+U+"</b><br>or condenser: <b>"+num(d.cm)+" MVA</b>";
     q('.k-cc',t).textContent=money(d.cc); var gcell=q('.k-gc',t); if(gcell) gcell.textContent=money(d.gc);
     q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
     var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
@@ -302,7 +309,7 @@ function parse(el,allowEmpty,allowZero){var t=el.value.trim(); if(t===''&&allowE
 var range=q('#mw-range'), box=q('#mw-num');
 if(range) range.addEventListener('input',function(){box.value=range.value;S.mw=+range.value;mark(box,'mw','');update();});
 if(box) box.addEventListener('input',function(){var r=parse(box,false,false);
-  if(!r.ok){mark(box,'mw','Enter a plant size above 0 MW \u2014 still showing '+num(S.mw)+' MW.');return;}
+  if(!r.ok){mark(box,'mw','Enter a plant size above 0 '+U+' \u2014 still showing '+num(S.mw)+' '+U+'.');return;}
   mark(box,'mw','');S.mw=r.v;if(r.v<=+range.max) range.value=r.v;update();});
 
 function bind(id,key,opts){var el=q('#'+id); if(!el) return;
@@ -380,6 +387,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     basis = escape(result.basis)
     live = interactive is not None
     mw0 = float(interactive["plant_mw"]) if live else None
+    unit = escape(str(interactive.get("unit", "MW"))) if live else basis  # unit of the slider's plant size
     TV = f"<span class='th-vw'>{vw:g}</span>" if live else f"{vw:g}"  # thresholds that update live
     TW = f"<span class='th-wk'>{wk:g}</span>" if live else f"{wk:g}"
     dscm = (lambda p: f" data-scmva='{p.scmva:.10g}'") if live else (lambda p: "")
@@ -431,7 +439,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         panel = [
             "<div class='slider whatif'><div class='wrow'><label for='mw-range'>Plant size</label>",
             f"<input id='mw-range' type='range' min='{step}' max='{_plain(top)}' step='{step}' value='{_plain(mw0)}'>",
-            f"<input id='mw-num' type='number' min='1' step='any' value='{_plain(mw0)}' aria-label='Plant size in MW'> MW",
+            f"<input id='mw-num' type='number' min='1' step='any' value='{_plain(mw0)}' aria-label='Plant size in {unit}'> {unit}",
             "<button id='mw-reset' type='button'>Reset all</button>",
             "<span id='mw-msg' class='msg' role='status' aria-live='polite'></span></div>",
             "<div class='wrow'><div class='wh'>Flag thresholds (SCR)</div>",
@@ -452,8 +460,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         panel.append(
             "<div class='hint'>Change any value to recalculate instantly in your browser"
             + (" (per-bus distances and POI costs are editable in the cost table)" if ci else "")
-            + ". SCR = SCMVA ÷ plant MW; short-circuit MVA does not change with these inputs. "
-            f"Files exported with --out keep the values the report was created with ({mw0:g} MW).</div></div>")
+            + f". SCR = SCMVA ÷ plant {unit}; short-circuit MVA does not change with these inputs. "
+            f"Files exported with --out keep the values the report was created with ({mw0:g} {unit}).</div></div>")
         parts.append("".join(panel))
 
     # --- Network map (V1) ----------------------------------------------------
@@ -489,7 +497,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     shown, cap_note = _limit(plants)
     heading = "SCR by bus" if live else "SCR by plant"
     if live:
-        heading += " for a <span data-mw-text>" + f"{mw0:,.1f}".rstrip("0").rstrip(".") + "</span> MW plant"
+        heading += " for a <span data-mw-text>" + f"{mw0:,.1f}".rstrip("0").rstrip(".") + f"</span> {unit} plant"
     parts.append(f"<h2>{heading}</h2><div class='chart scr-chart'>")
     scale = max([p.scr for p in shown] + [wk * 1.5])
     for i, p in enumerate(shown):
@@ -551,7 +559,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
 
     # --- Interconnection cost screening ----------------------------------------
     if cost:
-        parts.append(_cost_section(cost, live))
+        parts.append(_cost_section(cost, live, unit))
 
     # --- Results tables -----------------------------------------------------
     ext = interactive or {}
@@ -568,8 +576,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                  + "</tr></thead><tbody>")
     for p in plants:
         cls, label = FLAG_STYLE[p.flag]
-        attrs = dscm(p)
-        if live and p.plant_id in ext.get("ifsum", {}):
+        attrs = dscm(p) + (f" data-pid='{escape(p.plant_id)}'" if live else "")
+        if live and p.plant_id in ext.get("ifsum", {}) and p.scrif is not None:
             attrs += f" data-ifsum='{ext['ifsum'][p.plant_id]:.10g}'"
         if live and p.plant_id in ext.get("n1", {}):
             attrs += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
@@ -624,7 +632,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                  "Resources into Low Short Circuit Strength Systems (2017); NERC White Paper, "
                  "Short-Circuit Modeling and System Strength (2018).</footer>")
     if live:
-        cfg = {"vw": vw, "wk": wk, "mw": mw0, "maxLabels": 8}
+        cfg = {"vw": vw, "wk": wk, "mw": mw0, "maxLabels": 8, "unit": str(interactive.get("unit", "MW"))}
         if cost:
             ci = cost["inputs"]
             cfg["cost"] = {"target": ci.target_scr, "xd": ci.condenser_xdss_pu, "xt": ci.condenser_xt_pu,
@@ -706,12 +714,18 @@ def _groups_section(result, live, ext=None) -> str:
         cls, label = FLAG_STYLE[g.flag]
         gattr = f" data-g='{escape(g.group)}'" if live else ""
         out.append(f"<div class='gbox'{gattr}><h3>Group {escape(g.group)}</h3>")
-        for pid in g.plant_ids:
+        sized = g.member_ratings is not None
+        for k, pid in enumerate(g.plant_ids):
             p = by_id[pid]
-            pc, pl = FLAG_STYLE[p.flag]
-            attr = f" data-scmva='{p.scmva:.10g}'" if live else ""
-            out.append(f"<div class='gline mem'{attr}><span>{escape(pid)} alone</span>"
-                       f"<span><span class='val'>{p.scr:.2f}</span>"
+            rating = g.member_ratings[k] if sized else p.rating
+            value = p.scmva / rating
+            pc, pl = FLAG_STYLE[_flag_word(value, *_th(result))]
+            fixed = sized and abs(rating - p.rating) > 1e-9
+            attr = (f" data-scmva='{p.scmva:.10g}' data-pid='{escape(pid)}'"
+                    + (f" data-p='{rating:.10g}'" if fixed else "")) if live else ""
+            size_txt = f" ({rating:,.0f} {escape(result.basis)})" if fixed else ""
+            out.append(f"<div class='gline mem'{attr}><span>{escape(pid)} alone{size_txt}</span>"
+                       f"<span><span class='val'>{value:.2f}</span>"
                        f"<span class='pill {pc}'>{pl}</span></span></div>")
         out.append(f"<div class='gline total'><span>Together (WSCR)</span>"
                    f"<span><span class='val'>{g.wscr:.2f}</span>"
@@ -721,14 +735,16 @@ def _groups_section(result, live, ext=None) -> str:
                  if live and g.group in ext.get("cscmva", {}) else "")
             out.append(f"<div class='gline sub cscr'{a}><span>Together, POIs tied (CSCR)</span>"
                        f"<span>{_val_pill(g.cscr, *_th(result))}</span></div>")
-        for pid in g.plant_ids:
+        for k, pid in enumerate(g.plant_ids):
             p = by_id[pid]
-            if p.scrif is None:
+            scrif_v = g.member_scrif[k] if g.member_scrif is not None else p.scrif
+            if scrif_v is None:
                 continue
-            a = (f" data-s='{p.scmva:.10g}' data-ifsum='{ext['ifsum'][pid]:.10g}'"
-                 if live and pid in ext.get("ifsum", {}) else "")
+            a = (f" data-s='{p.scmva:.10g}' data-ifsum='{ext['ifsum'][pid]:.10g}' data-pid='{escape(pid)}'"
+                 f" data-if='{escape(json.dumps(ext['ifm'][pid]))}'"
+                 if live and pid in ext.get("ifsum", {}) and pid in ext.get("ifm", {}) else "")
             out.append(f"<div class='gline sub scrif'{a}><span>{escape(pid)} with interaction (SCRIF)</span>"
-                       f"<span>{_val_pill(p.scrif, *_th(result))}</span></div>")
+                       f"<span>{_val_pill(scrif_v, *_th(result))}</span></div>")
         drop = 100 * (1 - g.wscr / g.min_individual_scr)
         text = (f"Screened together, strength is {drop:.0f}% lower than the weakest plant alone."
                 if g.wscr < g.min_individual_scr else "")
@@ -804,14 +820,14 @@ def _money(v):
     return f"${v:.0f}"
 
 
-def _target_check(r) -> str:
+def _target_check(r, unit="MW") -> str:
     if r.meets_target:
         return "<span class='meet'>✓ Meets</span>"
-    return (f"<span class='below'>Below target</span><br>Max at target: <b>{r.max_at_target_mw:,.0f} MW</b>"
+    return (f"<span class='below'>Below target</span><br>Max at target: <b>{r.max_at_target_mw:,.0f} {unit}</b>"
             f"<br>or condenser: <b>{r.condenser_mva:,.1f} MVA</b>")
 
 
-def _cost_section(cost, live) -> str:
+def _cost_section(cost, live, unit="MW") -> str:
     from .cost import LIMITATIONS
 
     rows, ci = cost["rows"], cost["inputs"]
@@ -823,7 +839,7 @@ def _cost_section(cost, live) -> str:
     out = [
         "<h2>Interconnection cost screening</h2>",
         "<div class='inputs'>",
-        f"<span>Plant: <b>{mw_html} MW</b></span>",
+        f"<span>Plant: <b>{mw_html} {unit}</b></span>",
         f"<span>Target SCR: <b id='ci-target'>{ci.target_scr:g}</b></span>",
         f"<span>Condenser X″d + Xt: <b id='ci-x'>{ci.condenser_xdss_pu:g} + {ci.condenser_xt_pu:g} pu</b></span>",
         "<span>Condenser cost: <b id='ci-cpm'>" + (f"{_money(ci.condenser_cost_per_mva)}/MVA"
@@ -877,7 +893,7 @@ def _cost_section(cost, live) -> str:
             f"<tr data-scmva='{r.scmva:.10g}' data-dist='{dist}' data-poi='{poi}' "
             f"data-dist0='{dist}' data-poi0='{poi}'>"
             f"<td class='n k-rank'>{i}</td><td>{bus}</td>"
-            f"<td class='n k-scr'>{r.scr:.2f}</td><td class='k-tc'>{_target_check(r)}</td>"
+            f"<td class='n k-scr'>{r.scr:.2f}</td><td class='k-tc'>{_target_check(r, unit)}</td>"
             f"<td class='n k-need'>{r.added_scmva_needed:,.1f}</td>"
             f"<td class='n k-cmva'>{r.condenser_mva:,.1f}</td><td class='n k-after'>{r.scr_after:.2f}</td>"
             f"<td class='n k-cc'>{_money(r.condenser_cost)}</td>"
@@ -889,7 +905,7 @@ def _cost_section(cost, live) -> str:
             f"<span class='seg-p' style='width:{w(r.poi_cost)}'></span></div></td></tr>"
         )
     out.append("</tbody></table></div>")
-    out.append("<div class='note'>Condenser MVA = max(0, plant MW × target SCR − SCMVA) × (X″d + Xt). "
+    out.append(f"<div class='note'>Condenser MVA = max(0, plant {unit} × target SCR − SCMVA) × (X″d + Xt). "
                "\"Incomplete\" means a needed part has a quantity but no price entered. "
                + escape(LIMITATIONS) + "</div>")
     return "".join(out)
