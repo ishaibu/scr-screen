@@ -1,8 +1,8 @@
 # SCR-Screen
 
 [![tests](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml/badge.svg)](https://github.com/ishaibu/scr-screen/actions/workflows/tests.yml)
-![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
-![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)](https://pypi.org/project/scr-screen/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/ishaibu/scr-screen/blob/main/LICENSE)
 [![Interactive demo](https://img.shields.io/badge/demo-open%20in%20browser-0a9396)](https://ishaibu.github.io/scr-screen/demo/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23130832.svg)](https://doi.org/10.5281/zenodo.23130832)
 
