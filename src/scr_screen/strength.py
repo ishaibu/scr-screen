@@ -36,7 +36,7 @@ N-1 worst case
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -105,6 +105,7 @@ class N1Result:
     outage: dict[int, str]         # outage label causing it ("none" if no outage lowers it)
     studied: int                   # outages evaluated
     skipped: list[str]             # outages skipped because they island buses
+    zth: dict[int, complex] = field(default_factory=dict)  # complex Z_ii (pu) in that worst case
 
 
 def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) -> N1Result:
@@ -119,6 +120,7 @@ def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) ->
     base_diag = np.array([z[c, c] for c in cols])
     worst = {b: S_BASE_MVA / abs(d) for b, d in zip(buses, base_diag)}
     cause = {b: "none" for b in buses}
+    zth = {b: complex(d) for b, d in zip(buses, base_diag)}
     studied, skipped = 0, []
     outages = []
     for name, a, b, y1 in zb.branches:
@@ -149,8 +151,8 @@ def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) ->
                 continue
             s = S_BASE_MVA / d
             if s < worst[bus] - 1e-9:
-                worst[bus], cause[bus] = s, text
-    return N1Result(worst, cause, studied, skipped)
+                worst[bus], cause[bus], zth[bus] = s, text, complex(new_diag[k])
+    return N1Result(worst, cause, studied, skipped, zth)
 
 
 def suggest_groups(ifs: dict[tuple[int, int], float], buses: list[int], threshold: float) -> list[list[int]]:

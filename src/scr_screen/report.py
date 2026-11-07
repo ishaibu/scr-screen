@@ -199,7 +199,8 @@ function update(){
     var dn=q('.g-drop',b);
     if(dn){if(w<mn){dn.textContent='Screened together, strength is '+(100*(1-w/mn)).toFixed(0)+'% lower than the weakest plant alone.';dn.style.display='';}
       else{dn.textContent='';dn.style.display='none';}}
-    G[b.dataset.g]={w:w,c:c,n:n,tot:tot}; ng++; if(c!=='ok') gflag++;
+    var csl=q('.gline.cscr[data-cs]',b);
+    G[b.dataset.g]={w:w,c:c,n:n,tot:tot,cs:csl?+csl.dataset.cs/tot:null}; ng++; if(c!=='ok') gflag++;
     if(!glow||w<glow.w) glow={w:w,c:c,name:b.dataset.g};});
   qa('tr.gres').forEach(function(t){var d=G[t.dataset.g]; if(!d) return;
     var cc=q('.c-cscr',t); if(cc&&t.dataset.cs){var v=+t.dataset.cs/d.tot;cc.querySelector('.val').textContent=f(v,3);pill(q('.c-cscr .pill',t),flag(v));}
@@ -258,8 +259,26 @@ function update(){
     if(ca!==cb){r.classList.add('diff');diff++;} else r.classList.remove('diff');});
   qa('.cmp-tick').forEach(function(t){t.style.left=(+t.dataset.th/cmx*100)+'%';});
   var dc=q('#cmp-diff'); if(dc) dc.textContent=diff;
+  var tl=qa('[data-tri]'), tc=[0,0,0,0];
+  tl.forEach(function(t){var r=triEval(t,mw,SCRIF,G), c=TRI[r.L], p=q('.c-tri .pill',t);
+    if(p){p.className='pill '+c;p.textContent='Priority '+r.L;}
+    var w=q('.c-why',t); if(w) w.textContent=r.why.length?r.why.join(' \u00b7 '):'No screening trigger found';
+    if(t.classList.contains('trirow')) tc[r.L]++;});
+  var t1=q('#card-tri'); if(t1){t1.textContent=tc[1]+' / '+tc[2]+' / '+tc[3];t1.className='v '+(tc[1]?'vw':(tc[2]?'wk':'ok'));}
   if(C0) costUpdate(true);
 }
+var TRI={1:'vw',2:'wk',3:'ok'};
+function triEval(t,mw,SCRIF,G){var d=JSON.parse(t.dataset.tri), why=[], L=d.f;
+  function add(name,v){if(v===null||v===undefined||!isFinite(v)) return;
+    if(v<S.vw){why.push('P1 Low system strength: '+name+' '+f(v,3)+' is below the very-weak threshold '+g(S.vw));L=Math.min(L,1);}
+    else if(v<S.wk){why.push('P2 Low system strength: '+name+' '+f(v,3)+' is below the weak threshold '+g(S.wk));L=Math.min(L,2);}}
+  var s=+t.dataset.scmva/mw, low=s; add('SCR (intact)',s);
+  if(t.dataset.n1){var n=+t.dataset.n1/mw; add('SCR (N-1)',n); low=Math.min(low,n);}
+  if(t.dataset.qc!==undefined&&+t.dataset.qc>0) add('ESCR (intact)',(+t.dataset.scmva-(+t.dataset.qc))/mw);
+  if(t.dataset.pid in SCRIF) add('SCRIF (intact)',SCRIF[t.dataset.pid]);
+  if(d.g&&G[d.g]){add('group WSCR (intact)',G[d.g].w); if(G[d.g].cs!==null) add('group CSCR (intact)',G[d.g].cs);}
+  if(d.o&&low<d.o){why.push('P1 Below the equipment\u2019s minimum SCR: lowest SCR '+f(low,3)+' is below the OEM minimum SCR '+g(d.o));L=1;}
+  return {L:L,why:why.concat(d.r)};}
 
 function costUpdate(resort){
   var body=q('#cost-body'); if(!body) return;
@@ -418,6 +437,11 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                            vid="card-glow"))
     total = len(result.plants) + len(result.groups)
     parts.append(_card("Flagged", f"{flagged} of {total}", "wk" if flagged else "ok", vid="card-flag"))
+    if live and interactive.get("tri"):
+        tl = [v["L"] for v in interactive["tri"].values()]
+        c3 = [tl.count(k) for k in (1, 2, 3)]
+        parts.append(_card("EMT priority 1 / 2 / 3", f"{c3[0]} / {c3[1]} / {c3[2]}",
+                           "vw" if c3[0] else ("wk" if c3[1] else "ok"), vid="card-tri"))
     n1p = [p for p in result.plants if p.n1_scr is not None]
     if n1p:
         w = min(n1p, key=lambda p: p.n1_scr)
@@ -556,6 +580,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     # --- N-1 worst case ------------------------------------------------------
     if has_n1_any(result):
         parts.append(_n1_section(result, live, vw, wk))
+    if live and interactive.get("tri"):
+        parts.append(_tri_section(result, interactive))
 
     # --- Interconnection cost screening ----------------------------------------
     if cost:
@@ -566,6 +592,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     has_scrif = any(p.scrif is not None for p in plants)
     has_escr = any(p.escr is not None for p in plants)
     has_n1 = any(p.n1_scr is not None for p in plants)
+    tri = ext.get("tri") or {}
     parts.append("<h2>Results</h2><div class='tablewrap'><table><thead><tr>"
                  f"<th>{'Bus' if live else 'Plant'}</th><th>{'Model index' if live else 'POI'}</th><th>Group</th><th class='n'>SCMVA</th>"
                  f"<th class='n'>Rating ({basis})</th><th class='n'>SCR</th><th>Flag</th>"
@@ -573,6 +600,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                  + ("<th class='n'>SCRIF</th>" if has_scrif else "")
                  + ("<th class='n'>ESCR</th>" if has_escr else "")
                  + ("<th class='n'>N-1 SCR</th><th>Worst outage</th>" if has_n1 else "")
+                 + ("<th>EMT triage</th>" if tri else "")
                  + "</tr></thead><tbody>")
     for p in plants:
         cls, label = FLAG_STYLE[p.flag]
@@ -583,6 +611,8 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
             attrs += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
         if live and p.plant_id in ext.get("qc", {}):
             attrs += f" data-qc='{ext['qc'][p.plant_id]:.10g}'"
+        if p.plant_id in tri:
+            attrs += f" data-tri='{escape(json.dumps(tri[p.plant_id]))}'"
         cells = ""
         if has_scrif:
             cells += ("<td class='n c-scrif'>" + (_val_pill(p.scrif, vw, wk, 3) if p.scrif is not None else "") + "</td>")
@@ -591,6 +621,10 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         if has_n1:
             cells += (f"<td class='n c-n1'>{_val_pill(p.n1_scr, vw, wk, 3) if p.n1_scr is not None else ''}</td>"
                       f"<td>{escape(p.n1_outage or '')}</td>")
+        if tri:
+            t0 = tri[p.plant_id]
+            cells += (f"<td class='c-tri' style='white-space:nowrap'><span class='pill {_TRI_CLS[t0['L']]}'>Priority {t0['L']}</span></td>"
+                      if p.plant_id in tri else "<td></td>")
         parts.append(f"<tr class='res'{attrs}><td>{escape(p.plant_id)}</td><td>{escape(p.poi_name)}</td>"
                      f"<td>{escape(p.group or '')}</td><td class='n'>{p.scmva:,.1f}</td>"
                      f"<td class='n c-rating'>{p.rating:,.1f}</td><td class='n c-scr'>{p.scr:.3f}</td>"
@@ -794,6 +828,42 @@ def _n1_section(result, live, vw, wk, top=12) -> str:
         out.append(f"<tr{a}><td>{escape(p.plant_id)}</td><td class='n k-int'>{p.scr:.3f}</td>"
                    f"<td class='n'>{_val_pill(p.n1_scr, vw, wk, 3)}</td><td>{escape(p.n1_outage or '')}</td></tr>")
     out.append("</tbody></table></div>")
+    return "".join(out)
+
+
+_TRI_CLS = {1: "vw", 2: "wk", 3: "ok"}
+
+
+def _tri_section(result, ext) -> str:
+    """EMT triage for every scanned bus; the browser sets each priority as the plant size changes."""
+    tri = ext["tri"]
+    rows = sorted((p for p in result.plants if p.plant_id in tri),
+                  key=lambda p: (tri[p.plant_id]["L"], min(p.scr, p.n1_scr if p.n1_scr is not None else p.scr)))
+    out = ["<h2>EMT study triage</h2><div class='note' style='margin-top:-4px;margin-bottom:10px'>NERC's "
+           "Reliability Guideline on EMT studies for IBRs (December 2024, Chapter 1) lists situations in which EMT "
+           "studies should be considered if any one applies, and notes that a high level of system strength alone "
+           "should not rule out the need for EMT studies. Priorities are SCR-Screen's ordering of the work, not "
+           "NERC's: 1 = a metric below the very-weak threshold, series compensation, FACTS or HVdc nearby, a "
+           "system event that positive-sequence models cannot reproduce, or below the OEM minimum SCR; 2 = a "
+           "metric below the weak threshold, other IBRs nearby, or another situation answered yes; 3 = no "
+           "screening trigger found. Counts on the card: Priority 1 / 2 / 3.</div>"
+           "<div class='tablewrap'><table><thead><tr><th>Bus</th><th>Priority</th><th>Why</th>"
+           "<th class='n' style='white-space:nowrap'>Not checked</th></tr></thead><tbody>"]
+    for p in rows:
+        a = f" data-scmva='{p.scmva:.10g}' data-pid='{escape(p.plant_id)}'"
+        if p.plant_id in ext.get("n1", {}):
+            a += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
+        if p.plant_id in ext.get("qc", {}):
+            a += f" data-qc='{ext['qc'][p.plant_id]:.10g}'"
+        a += f" data-tri='{escape(json.dumps(tri[p.plant_id]))}'"
+        t0 = tri[p.plant_id]
+        why = " · ".join(t0["w"]) if t0["w"] else "No screening trigger found"
+        out.append(f"<tr class='trirow'{a}><td style='white-space:nowrap'>{escape(p.plant_id)}</td>"
+                   f"<td class='c-tri' style='white-space:nowrap'><span class='pill "
+                   f"{_TRI_CLS[t0['L']]}'>Priority {t0['L']}</span></td><td class='c-why'>{escape(why)}</td>"
+                   f"<td class='n'>{t0['u']}</td></tr>")
+    out.append("</tbody></table></div><div class='note'>Not checked: situations a network model cannot show "
+               "(answer them with --poi-info). For a Thevenin data sheet per POI, use scr-screen triage.</div>")
     return "".join(out)
 
 

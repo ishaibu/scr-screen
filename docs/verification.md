@@ -17,6 +17,8 @@ real project.
 | V2 | 2026-10-17 | IEEE 39-bus, group G1 (buses 11 + 13), WSCR | Hand calculation from reported SCMVA | Match |
 | V3 | 2026-11-01 | IEEE 39-bus, group G1, interaction factors, SCRIF, CSCR | Hand calculation from impedance matrix | Match |
 | V4 | 2026-11-06 | IEEE 39-bus, MVA basis (WSCR-MVA, CSCR-MVA, SCRIF), STATCOM in a group, generator outage at bus 38 | Hand calculation | Match |
+| V5 | 2026-11-07 | IEEE 39-bus, bus 12 Thévenin data sheet (R, X, X/R, ohms, fault current), intact and worst N-1 | Hand calculation from impedance matrix | Match |
+
 
 ---
 
@@ -277,3 +279,74 @@ Step-by-step working is in the V4 hand-calculation worksheet.
 - Whether a STATCOM's own SCRIF is a meaningful acceptance criterion for that device.
   NERC's table credits SCRIF and WSCR-MVA with considering non-active inverter
   capacity; the tool reports the value and leaves its use to the engineer.
+
+---
+
+## V5 — IEEE 39-bus, Thévenin data sheet for bus 12 (intact and worst N-1)
+
+**Date:** 2026-11-07
+**Checked by:** Shaibu Ibrahim, P.E.
+**Tool version:** 0.4.0
+**Case:** `scr-screen triage ieee39_assumed.json --buses 12 --plant-mw 1500 --out v5.csv`
+
+With the documented assumed short-circuit data used in V1 to V4. All buses of the
+example network are 345 kV, so the ohm base is 345² ÷ 100 = 1,190.25 Ω.
+
+### Why this case
+v0.4.0 adds a Thévenin data sheet at each POI for the EMT triage: R, X, |Z| in pu and
+ohms, X/R and fault current, with the network intact and under the worst single
+outage. Bus 12 (checked in V1) is checked by hand from the impedance matrix.
+
+### Method
+- **Intact:** Z_th = Z₁₂,₁₂ from the impedance matrix; ohms = pu × 1,190.25;
+  X/R = X ÷ R; SCMVA = 100 ÷ |Z|; I_sc = SCMVA ÷ (√3 × 345) kA; SCR = SCMVA ÷ 1,500.
+- **Worst N-1 (transformer 3, between buses 12 and 11, out):** remove the
+  transformer's admittance y with m = e₁₂ − e₁₁ (Sherman–Morrison):
+  Z′₁₂,₁₂ = Z₁₂,₁₂ + y (Z₁₂,₁₂ − Z₁₂,₁₁)² ÷ (1 − y (Z₁₂,₁₂ + Z₁₁,₁₁ − 2 Z₁₂,₁₁)).
+- Transformer 3: 500 MVA, vk 21.7647%, vkr 0.8%, so xk = √(0.217647² − 0.008²) = 0.2175
+  and z = (0.008 + j0.2175) × 100 ÷ 500 = 0.0016 + j0.0435 pu; y = 1 ÷ z.
+
+Snippet used to print the impedance-matrix terms (run in the repository folder):
+
+    python -c "import pandapower as pp; from scr_screen.classical import build_zbus; net=pp.from_json('examples/ieee39_assumed.json'); zb=build_zbus(net); n={str(net.bus.at[b,'name']):int(b) for b in net.bus.index}; a,b=zb.pos[n['12']],zb.pos[n['11']]; print(zb.z[a,a], zb.z[b,b], zb.z[a,b]); print(net.trafo.loc[3,['hv_bus','lv_bus','sn_mva','vk_percent','vkr_percent']])"
+
+### Results
+
+| Check | Hand calculation | SCR-Screen |
+|---|---|---|
+| Z₁₂,₁₂ (intact) | 0.0015174 + j0.0352728 pu; \|Z\| = 0.0353054 | 0.00152, 0.03527, 0.03531 |
+| Intact X/R | 0.0352728 ÷ 0.0015174 = **23.25** | 23.25 |
+| Intact ohms | R 1.806 Ω, X 41.983 Ω, \|Z\| **42.022 Ω** | 1.806, 41.983, 42.022 |
+| Intact SCMVA, I_sc, SCR | 100 ÷ 0.0353054 = **2,832.4 MVA**; **4.74 kA**; **1.888** | 2,832.4; 4.74; 1.888 |
+| Z₁₁,₁₁ and Z₁₂,₁₁ | 0.0008171 + j0.0148743; 0.0006976 + j0.0133840 pu | — |
+| y (transformer 3) | 0.84441 − j22.9574 pu | — |
+| Z₁₂,₁₂ − Z₁₂,₁₁ | 0.0008198 + j0.0218888 | — |
+| Z₁₂,₁₂ + Z₁₁,₁₁ − 2 Z₁₂,₁₁ | 0.0009393 + j0.0233791 | — |
+| Numerator y (·)² | 0.00041991 + j0.0110142 | — |
+| Denominator 1 − y (·) | 0.462483 + j0.001822 | — |
+| Z′₁₂,₁₂ (N-1) | 0.0015174 + j0.0352728 + (0.0010018 + j0.0238115) = **0.0025192 + j0.0590843** pu (tool, full precision: 0.0025194 + j0.0590843) | 0.00252, 0.05908 |
+| N-1 \|Z\|, X/R | **0.0591379**; **23.45** | 0.05914; 23.45 |
+| N-1 ohms | R 2.999 Ω, X 70.325 Ω, \|Z\| **70.389 Ω** | 2.999, 70.325, 70.389 |
+| N-1 SCMVA, I_sc, SCR | **1,691.0 MVA**; **2.83 kA**; **1.127** | 1,691.0; 2.83; 1.127 |
+| Priority at 1,500 MW | SCR below 2 intact and N-1: **Priority 1** | Priority 1 |
+
+Hand values use the impedance-matrix terms rounded to 7 decimals, so the last digit of
+R′ differs slightly (0.0025192 vs 0.0025194); every reported value agrees to the digits shown. Step-by-step working is in the V5 hand-calculation worksheet.
+
+**Outcome:** Match / 
+
+### What this proves
+- The data sheet reports the Thévenin impedance at the POI correctly in pu and ohms,
+  with its X/R ratio, fault current and SCR, for the intact network and for the worst
+  single outage.
+- The N-1 screen keeps the complex impedance of the worst outage, not only its magnitude.
+
+### What this does not prove
+- The impedance matrix itself (V1 and test M1).
+- That transformer 3 is the worst outage for bus 12: that comes from the N-1 screen,
+  checked against a full rebuild of the network for every outage by automated tests.
+- The minimum-generation case, nearby-IBR and device detection, and the priority rules.
+  These are checked by automated tests (`tests/test_v040.py`), including a full rebuild
+  for the minimum-generation case.
+- Whether an EMT study is required. The triage lists situations that call for one; the
+  transmission provider's requirements govern.

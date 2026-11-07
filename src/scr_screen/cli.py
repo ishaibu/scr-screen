@@ -11,6 +11,8 @@ Examples:
     scr-screen interactions mynetwork.xlsx --buses 11,12,13,16,17 --out groups.csv
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --n1
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --groups groups.csv
+    scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --emt-triage
+    scr-screen triage mynetwork.xlsx --buses 12,16 --plant-mw 300 --poi-info poi_info.csv --report triage.html
     scr-screen scan mynetwork.xlsx --plant-mw 300 --report scan.html --site-costs sites.csv \
         --condenser-cost-per-mva 100000 --gen-tie-cost-per-mile 2000000
     scr-screen --version
@@ -112,6 +114,13 @@ def _cmd_scan(args) -> int:
     if not args.plant_mw > 0:
         raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
     basis = args.basis.upper()
+    if args.emt_triage:
+        if args.method != "classical":
+            raise InputError("EMT triage (--emt-triage) uses the classical method. Remove --method iec60909.")
+        _check_ibr_threshold(args.ibr_threshold)
+        args.n1 = True  # the triage uses the worst single outage
+    elif args.poi_info or args.ibr_threshold != 0.5:
+        raise InputError("--poi-info and --ibr-threshold are used with --emt-triage; add --emt-triage.")
     mva_note = _resolve_plant_mva(args, basis)
     rating = args.plant_mva if basis == "MVA" else args.plant_mw  # the size used in every ratio
     from .check import check_network
@@ -122,6 +131,12 @@ def _cmd_scan(args) -> int:
     path = _existing(args.network, "Network file")
     net = load_network(path)
     gen_out_note = _apply_gen_out(args, net)
+    devices, triage_notes = [], []
+    if args.emt_triage:
+        from .triage import detect_devices, prepare_network
+
+        devices = detect_devices(net)
+        triage_notes = prepare_network(net)
     rep = check_network(net)
     if not rep.ready(args.method):
         _print_check(rep, path.name)
@@ -190,7 +205,15 @@ def _cmd_scan(args) -> int:
                      + ". Devices with no active power count only on the MVA basis (NERC's WSCR-MVA); "
                      "use --basis MVA with --plant-mva.")
     result, extra, strength_notes = _network_strength(args, net, rows, ids, result, rating, sizes)
+    zb = extra.pop("_zb", None)
     notes += strength_notes
+    tri = None
+    if args.emt_triage:
+        tri, tri_notes = _scan_triage(args, net, zb, rows, ids, result, devices, thresholds)
+        notes += triage_notes + tri_notes
+        extra["tri"] = {pid: {**t["live"], "L": t["level"],
+                              "w": [f"P{x.level} {x.situation}: {x.detail}" for x in t["triggers"]]}
+                        for pid, t in tri.items()}
 
     cost = _cost_screening(args, result, thresholds)
 
@@ -214,15 +237,89 @@ def _cmd_scan(args) -> int:
                        "primary_label": _short_label(args.method),
                        "compare_label": _short_label(other), **extra}
     _print_summary(result)
+    if tri:
+        _print_scan_triage(tri)
     if cost:
         _print_costs(cost["rows"], unit=basis)
     _write_outputs(result, args, notes=notes, network_svg=svg, network_note=map_note,
-                   interactive=interactive, cost=cost)
+                   interactive=interactive, cost=cost, triage=tri)
     if cost and args.cost_out:
         from .cost import write_cost_csv
 
         print(f"Costs written:   {write_cost_csv(cost['rows'], args.cost_out)}")
     return 0
+
+
+def _scan_triage(args, net, zb, rows, ids, result, devices, thresholds):
+    """EMT triage for every scanned bus at the scan's plant size.
+
+    Returns ({plant_id: {"level", "triggers", "unknown", "live"}}, notes). "live" holds the
+    size-independent part (nearby IBRs and devices, user answers, OEM minimum, group) for the
+    report, which re-evaluates the strength triggers as the plant size changes.
+    """
+    from .triage import (NERC_NOT_RULE_OUT, NERC_RULE, PRIORITY_NOTE, PRIORITY_RULES, USER_FIELDS, fixed_triggers,
+                         info_for, level_of, metric_triggers, oem_trigger, proximity, read_poi_info)
+
+    info = read_poi_info(_existing(args.poi_info, "POI information file")) if args.poi_info else {}
+    labels = {pid[4:] for pid in ids.values()}
+    unknown = [k for k in info if k != "all" and k not in labels]
+    if unknown:
+        raise InputError(f"POI information file lists bus(es) not in the scan: {', '.join(unknown[:8])}.")
+    label = lambda b: ids.get(b, f"Bus {b}")  # noqa: E731
+    pid_bus = {ids[r.bus]: r.bus for r in rows}
+    ibrs = _ibrs(net)
+    from .strength import capacitor_mvar
+
+    caps = capacitor_mvar(net)
+    gof, gval, sval = {}, {}, {}
+    for g in result.groups:
+        gval[g.group] = (g.wscr, g.cscr)
+        for k, pid in enumerate(g.plant_ids):
+            gof[pid] = g.group
+            if g.member_scrif is not None:
+                sval[pid] = g.member_scrif[k]
+    out = {}
+    for p in result.plants:
+        b = pid_bus[p.plant_id]
+        near_i, near_d = proximity(zb, b, ibrs, devices, label, args.ibr_threshold)
+        pinfo = info_for(info, p.plant_id[4:])
+        fixed = fixed_triggers(near_i, near_d, pinfo)
+        values = [("SCR (intact)", p.scr)]
+        if p.n1_scr is not None:
+            values.append(("SCR (N-1)", p.n1_scr))
+        if caps.get(b, 0.0) > 0 and p.escr is not None:
+            values.append(("ESCR (intact)", p.escr))
+        if p.plant_id in sval:
+            values.append(("SCRIF (intact)", sval[p.plant_id]))
+        grp = gof.get(p.plant_id)
+        if grp:
+            w, cs = gval[grp]
+            values.append(("group WSCR (intact)", w))
+            if cs is not None:
+                values.append(("group CSCR (intact)", cs))
+        oem = pinfo.oem_min_scr if pinfo else None
+        low = min(p.scr, p.n1_scr) if p.n1_scr is not None else p.scr
+        trig = metric_triggers(values, thresholds) + oem_trigger(low, oem) + fixed
+        n_unknown = (sum(v == "unknown" for v in pinfo.answers.values()) if pinfo else len(USER_FIELDS))
+        out[p.plant_id] = {"level": level_of(trig), "triggers": trig, "unknown": n_unknown,
+                           "live": {"f": level_of(fixed), "r": [f"P{t.level} {t.situation}: {t.detail}" for t in fixed],
+                                    "o": oem, "g": grp or "", "u": n_unknown}}
+    notes = [f"EMT triage: {NERC_RULE} {NERC_NOT_RULE_OUT} {PRIORITY_NOTE} {PRIORITY_RULES} In a scan, the "
+             "conditions are the intact network and the worst single outage.",
+             f"EMT triage, nearby: an existing IBR or device is nearby when max(IF_ij, IF_ji) with the bus is at least "
+             f"{args.ibr_threshold:g} (--ibr-threshold; SCR-Screen's default judgment value). Series compensation is "
+             "found as lines with negative series reactance, FACTS as svc/ssc/tcsc and HVdc as vsc/dcline elements."]
+    if not args.poi_info:
+        notes.append("EMT triage: no POI information file (--poi-info) was given, so the situations a network model "
+                     "cannot show (e.g. pre-existing oscillation, RAS, system events) are not checked. For a full data sheet per "
+                     "POI, use: scr-screen triage.")
+    return out, notes
+
+
+def _print_scan_triage(tri) -> None:
+    counts = [sum(t["level"] == k for t in tri.values()) for k in (1, 2, 3)]
+    print(f"EMT triage: Priority 1: {counts[0]}  Priority 2: {counts[1]}  Priority 3: {counts[2]}"
+          " (details in the report; per-POI data sheets: scr-screen triage).")
 
 
 def _bus_ids(net, buses) -> tuple[dict[int, str], bool]:
@@ -390,6 +487,7 @@ def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
                      "from the 'Equivalent SCR' of CIGRE, which is SCRIF).")
     result.plants = [replace(p, **plant_upd[p.plant_id]) if p.plant_id in plant_upd else p for p in result.plants]
     result.groups = [replace(g, **group_upd[g.group]) if g.group in group_upd else g for g in result.groups]
+    extra["_zb"] = zb  # for EMT triage; removed by the caller
     return result, extra, notes
 
 
@@ -446,6 +544,211 @@ def _cmd_interactions(args) -> int:
             w.writerows(rows)
         print(f"Groups written:  {out}  (use with: scr-screen scan {path.name} --plant-mw ... --groups {out.name})")
     return 0
+
+
+def _cmd_triage(args) -> int:
+    """EMT study triage: a system strength data sheet and a priority for each listed POI."""
+    import copy
+    from datetime import datetime, timezone
+
+    from .check import check_network
+    from .classical import build_zbus
+    from .loaders import load_network
+    from .strength import capacitor_mvar, composite_scmva, interaction_matrix, n1_worst
+    from .triage import (NERC_NOT_RULE_OUT, NERC_RULE, PRIORITY_NOTE, detect_devices, info_for,
+                         prepare_network, read_poi_info, thevenin, triage_poi)
+    from .triage_report import write_triage_csv, write_triage_html, write_triage_json
+
+    if not args.plant_mw > 0:
+        raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
+    _check_ibr_threshold(args.ibr_threshold)
+    basis = args.basis.upper()
+    mva_note = _resolve_plant_mva(args, basis)
+    rating = args.plant_mva if basis == "MVA" else args.plant_mw
+    thresholds = _thresholds(args)
+    path = _existing(args.network, "Network file")
+    net = load_network(path)
+    devices = detect_devices(net)
+    notes = prepare_network(net)
+    rep = check_network(net)
+    if not rep.ready("classical"):
+        _print_check(rep, path.name)
+        raise InputError(f"{path.name} is not ready for the classical method; see the list above.")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        zb = build_zbus(net)
+    ids, use_names = _bus_ids(net, list(zb.pos))
+    label = lambda b: ids.get(b, f"Bus {b}")  # noqa: E731
+    pois = _pick_buses(args.buses, ids, at_least=1)
+    pid_of = {b: ids[b] for b in pois}
+    info = read_poi_info(_existing(args.poi_info, "POI information file")) if args.poi_info else {}
+    unknown = [k for k in info if k != "all" and f"Bus {k}" not in pid_of.values()]
+    if unknown:
+        raise InputError(f"POI information file lists POI(s) not in --buses: {', '.join(unknown[:8])}.")
+
+    # Groups (optional): members must be among the POIs; fixed member sizes as in scan.
+    groups: dict[str, list[int]] = {}
+    sizes: dict[int, float] = {}
+    if args.groups:
+        from .io import read_bus_groups_full
+
+        by_label = {pid[4:]: b for b, pid in pid_of.items()}
+        raw = read_bus_groups_full(_existing(args.groups, "Groups file"))
+        missing = [b for b in raw if b not in by_label]
+        if missing:
+            raise InputError(f"Groups file lists bus(es) not in --buses: {', '.join(missing[:8])}. "
+                             "List every group member as a POI.")
+        for b, (g, mw, mva) in raw.items():
+            if mw is not None:
+                if basis == "MW" and mw == 0:
+                    notes.append(f"Bus {b} (0 MW) was left out of group {g} on the MW basis; use --basis MVA.")
+                    continue
+                sizes[by_label[b]] = mva if basis == "MVA" else mw
+            groups.setdefault(g, []).append(by_label[b])
+        groups = {g: m for g, m in groups.items() if len(m) > 1}
+
+    # Conditions: intact, worst N-1, and minimum generation when --gen-out is given.
+    n1 = n1_worst(zb, pois, label=label)
+    zmin, min_note = None, None
+    if args.gen_out:
+        net_min = copy.deepcopy(net)
+        min_note = _apply_gen_out(args, net_min)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            zmin = build_zbus(net_min)
+        lost = [pid_of[b] for b in pois if b not in zmin.pos]
+        if lost:
+            raise InputError("In the minimum-generation case these POIs have no path to a source: "
+                             + ", ".join(lost) + ".")
+    caps = capacitor_mvar(net)
+    ibr_list = _ibrs(net)
+    items = []
+    gmetrics: dict[int, tuple] = {}
+    for g, members in groups.items():
+        size = {b: sizes.get(b, rating) for b in members}
+        ifs = interaction_matrix(zb, members)
+        tot = sum(size.values())
+        scm = {b: 100.0 / abs(zb.z[zb.pos[b], zb.pos[b]]) for b in members}
+        w = sum(scm[b] * size[b] for b in members) / tot ** 2
+        cs = composite_scmva(zb, members) / tot
+        for b in members:
+            sif = scm[b] / (size[b] + sum(ifs[(b, j)] * size[j] for j in members if j != b))
+            gmetrics[b] = (g, w, cs, sif)
+    for b in pois:
+        pid = pid_of[b]
+        kv = float(net.bus.at[b, "vn_kv"])
+        r = sizes.get(b, rating)
+        qc = caps.get(b, 0.0)
+        conds = [thevenin("intact", "", complex(zb.z[zb.pos[b], zb.pos[b]]), kv, r, qc)]
+        out_text = (f"{n1.outage[b]} out" if n1.outage[b] != "none" else "no single outage lowers it")
+        conds.append(thevenin("N-1", out_text, n1.zth[b], kv, r, qc))
+        if zmin is not None:
+            conds.append(thevenin("minimum generation", "generators at " + args.gen_out.replace(",", ", ")
+                                  + " out", complex(zmin.z[zmin.pos[b], zmin.pos[b]]), kv, r, qc))
+        from .triage import proximity
+
+        near_i, near_d = proximity(zb, b, ibr_list, devices, label, args.ibr_threshold)
+        g = gmetrics.get(b)
+        items.append(triage_poi(pid, b, kv, r, basis, conds, thresholds, near_i, near_d,
+                                info_for(info, pid[4:]), *(g if g else (None, None, None, None))))
+    items.sort(key=lambda it: (it.level, it.lowest_scr))
+
+    notes = [NERC_RULE, NERC_NOT_RULE_OUT, PRIORITY_NOTE,
+             "Short-circuit data: classical flat-start Z-bus on 100 MVA (1.0 pu pre-fault voltage, no IEC "
+             "c-factor; loads, shunts and line charging ignored); inverter-based resources (sgen, storage) are "
+             "excluded from the short-circuit MVA, as NERC requires.",
+             f"N-1: each of {n1.studied} line circuits, transformer units and generator units was removed in turn; "
+             "the worst outage for each POI is shown" + (f" ({len(n1.skipped)} islanding outage(s) skipped)"
+                                                         if n1.skipped else "") + ". The minimum-generation case, "
+             "when given, is computed with the network intact.",
+             f"Nearby: an existing IBR or device is 'nearby' when its interaction with the POI, max(IF_ij, IF_ji) "
+             f"with IF_ij = |Z_ij ÷ Z_jj|, is at least {args.ibr_threshold:g} (--ibr-threshold; SCR-Screen's "
+             "default judgment value, not an industry standard). If the model already contains the plant being "
+             "screened as an sgen, it appears as a nearby IBR at its own bus; ignore that entry.",
+             "Series compensation is found as lines with negative series reactance; FACTS as svc, ssc and tcsc "
+             "elements; HVdc as vsc and dcline elements. Devices modeled another way (e.g. as an equivalent "
+             "impedance) are not found: answer them in the POI information file."] + notes
+    if min_note:
+        notes.append(min_note.replace("for this scan (--gen-out)", "in the minimum-generation case only (--gen-out)"))
+    if mva_note:
+        notes.append(mva_note)
+    if not args.poi_info:
+        notes.append("No POI information file was given (--poi-info), so the situations a model cannot show "
+                     "are listed as not checked for every POI.")
+    source = f"network model ({path.name}), classical flat-start (1.0 pu)"
+    run_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    _print_triage(items, basis)
+    if args.report:
+        out = write_triage_html(items, args.report, title=args.title, source=source, notes=notes,
+                                thresholds={"very_weak_below": thresholds.very_weak_below,
+                                            "weak_below": thresholds.weak_below}, run_utc=run_utc)
+        print(f"Report written:  {out}")
+        if args.open:
+            import webbrowser
+
+            webbrowser.open(Path(out).resolve().as_uri())
+            print("Opened the report in your browser.")
+    if args.out:
+        out = Path(args.out)
+        if out.suffix.lower() == ".csv":
+            write_triage_csv(items, out)
+        elif out.suffix.lower() == ".json":
+            write_triage_json(items, out, {"source": source, "run_utc": run_utc, "basis": basis,
+                                           "thresholds": {"very_weak_below": thresholds.very_weak_below,
+                                                          "weak_below": thresholds.weak_below},
+                                           "notes": notes})
+        else:
+            raise InputError("--out must end in .csv or .json")
+        print(f"Results written: {out}")
+    return 0
+
+
+def _check_ibr_threshold(v) -> None:
+    if not 0 < v <= 1:
+        raise InputError(f"--ibr-threshold must be above 0 and at most 1, got {v:g}.")
+
+
+def _ibrs(net):
+    from .triage import existing_ibrs
+
+    return existing_ibrs(net)
+
+
+def _pick_buses(text, ids, at_least=1) -> list[int]:
+    """Bus indices for a comma-separated list of bus labels (with or without 'Bus ')."""
+    by_label = {pid[4:]: b for b, pid in ids.items()}
+    wanted = [x.strip() for x in text.split(",") if x.strip()]
+    wanted = [w[4:].strip() if w.lower().startswith("bus ") else w for w in wanted]
+    unknown = [w for w in wanted if w not in by_label]
+    if unknown:
+        raise InputError(f"Bus(es) not found or isolated: {', '.join(unknown[:8])}. Use the bus labels "
+                         "shown in scan reports.")
+    if len(set(wanted)) != len(wanted):
+        raise InputError("A bus is listed more than once in --buses.")
+    if len(wanted) < at_least:
+        raise InputError("List at least one bus with --buses, e.g. --buses 12,16.")
+    return [by_label[w] for w in wanted]
+
+
+def _print_triage(items, basis) -> None:
+    print(f"SCR-Screen v{__version__} | EMT triage | basis {basis}")
+    for it in items:
+        print(f"\n{it.poi_id}  {it.kv:g} kV  plant {it.rating:,.1f} {basis}   {it.level_text}")
+        print(f"  {'Condition':<20}{'SCMVA':>10}{'SCR':>8}{'X/R':>8}{'|Z| ohm':>10}  Outage or case")
+        for c in it.conditions:
+            xr = "inf" if c.x_over_r is None else f"{c.x_over_r:.2f}"
+            print(f"  {c.condition:<20}{c.scmva:>10.1f}{c.scr:>8.3f}{xr:>8}{c.z_ohm:>10.2f}  {c.outage}")
+        if it.group:
+            print(f"  Group {it.group}: WSCR {it.wscr:.3f}, CSCR {it.cscr:.3f}, SCRIF {it.scrif:.3f} (intact)")
+        for t in sorted(it.triggers, key=lambda t: t.level):
+            print(f"  [P{t.level}] {t.situation}: {t.detail}")
+        if not it.triggers:
+            print("  No screening trigger found (a high system strength alone does not rule out EMT studies).")
+        if it.unknown:
+            print(f"  Not checked ({len(it.unknown)}): answer in --poi-info (yes / no / unknown).")
+    counts = [sum(it.level == k for it in items) for k in (1, 2, 3)]
+    print(f"\nPriority 1: {counts[0]}  Priority 2: {counts[1]}  Priority 3: {counts[2]}. "
+          "Screening indicators only; not a substitute for studies.")
 
 
 def _scan_groups(args, ids) -> dict[str, str]:
@@ -590,7 +893,8 @@ def _thresholds(args) -> Thresholds:
 
 def _write_outputs(result: ScreeningResult, args, notes: list[str],
                    network_svg: str | None = None, network_note: str | None = None,
-                   interactive: dict | None = None, cost: dict | None = None) -> None:
+                   interactive: dict | None = None, cost: dict | None = None,
+                   triage: dict | None = None) -> None:
     if args.report:
         path = write_html_report(result, args.report, title=args.title, notes=notes,
                                  network_svg=network_svg, network_note=network_note,
@@ -604,9 +908,9 @@ def _write_outputs(result: ScreeningResult, args, notes: list[str],
     if args.out:
         out = Path(args.out)
         if out.suffix.lower() == ".json":
-            write_results_json(result, out)
+            write_results_json(result, out, triage=triage)
         elif out.suffix.lower() == ".csv":
-            write_results_csv(result, out)
+            write_results_csv(result, out, triage=triage)
         else:
             raise InputError("--out must end in .csv or .json")
         print(f"Results written: {out}")
@@ -724,6 +1028,13 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--groups", metavar="CSV",
                    help="screen buses together with WSCR: CSV with columns bus, group, and optional "
                         "mw, mva for a member's own size (e.g. an existing plant, or a STATCOM with mw 0)")
+    s.add_argument("--emt-triage", action="store_true",
+                   help="add an EMT study priority for every bus (NERC 2024 situations; implies --n1)")
+    s.add_argument("--ibr-threshold", type=float, default=0.5, metavar="X",
+                   help="with --emt-triage: an existing IBR or device is nearby when its interaction factor "
+                        "with the bus is at least X (default 0.5)")
+    s.add_argument("--poi-info", metavar="CSV",
+                   help="with --emt-triage: answers (yes/no/unknown) for situations a model cannot show")
     g = s.add_argument_group("cost screening (optional; all costs are your own inputs)")
     g.add_argument("--cost", action="store_true", help="add cost screening (condenser sizing) to the scan")
     g.add_argument("--site-costs", metavar="CSV", help="per-bus distance_mi and poi_cost_usd "
@@ -740,6 +1051,26 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--cost-out", metavar="CSV", help="write the cost table to a CSV file")
     common(s)
     s.set_defaults(func=_cmd_scan)
+
+    tr = sub.add_parser("triage", help="EMT study triage: a system strength data sheet and priority for each POI")
+    tr.add_argument("network", help="network file (.json, .xlsx, .m, .mat)")
+    tr.add_argument("--buses", required=True, metavar="LIST", help="comma-separated POI bus labels, e.g. 12,16")
+    tr.add_argument("--plant-mw", type=float, required=True, help="plant size at each POI")
+    tr.add_argument("--plant-mva", type=float, metavar="MVA", help="plant nameplate MVA rating, for --basis MVA")
+    tr.add_argument("--inverters", type=float, metavar="N", help="number of inverters (with --inverter-mva)")
+    tr.add_argument("--inverter-mva", type=float, metavar="MVA", help="nameplate MVA of each inverter")
+    tr.add_argument("--power-factor", type=float, metavar="PF", help="ESTIMATE the MVA as plant MW ÷ PF")
+    tr.add_argument("--basis", choices=["MW", "MVA", "mw", "mva"], default="MW", help="rating basis (default MW)")
+    tr.add_argument("--groups", metavar="CSV", help="groups of POIs screened together (bus, group, optional mw, mva)")
+    tr.add_argument("--gen-out", metavar="LIST",
+                    help="add a minimum-generation case with the generators at these buses out, e.g. 38,39")
+    tr.add_argument("--ibr-threshold", type=float, default=0.5, metavar="X",
+                    help="an existing IBR or device is nearby when its interaction factor with the POI is at "
+                         "least X (default 0.5)")
+    tr.add_argument("--poi-info", metavar="CSV",
+                    help="answers (yes/no/unknown) for situations a model cannot show, and oem_min_scr")
+    common(tr)
+    tr.set_defaults(func=_cmd_triage, title="SCR-Screen EMT triage")
     return parser
 
 

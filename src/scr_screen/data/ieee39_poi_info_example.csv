@@ -1,0 +1,3 @@
+poi,rms_stability_concerns,unexplained_system_event,pre_existing_oscillation,series_compensation,facts_nearby,hvdc_nearby,high_ibr_penetration,ras,distance_relays_declining_fault_current,decreasing_strength_trend,rocof_inertia_trend,oem_min_scr,notes
+all,unknown,no,no,no,no,no,unknown,unknown,unknown,unknown,unknown,,ILLUSTRATIVE answers for the IEEE 39-bus example; replace them with information from the transmission provider
+28,unknown,no,no,no,no,no,unknown,unknown,unknown,unknown,unknown,3.0,ILLUSTRATIVE: an assumed inverter OEM minimum SCR of 3.0

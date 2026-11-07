@@ -183,19 +183,29 @@ def read_bus_groups_full(path: str | Path) -> dict[str, tuple[str, float | None,
     return groups
 
 
-def write_results_json(result: ScreeningResult, path: str | Path) -> Path:
-    """Write the full result (metadata, plants, groups) as JSON."""
+def write_results_json(result: ScreeningResult, path: str | Path, triage: dict | None = None) -> Path:
+    """Write the full result (metadata, plants, groups) as JSON; with ``triage``, add "emt_triage"."""
     path = Path(path)
-    path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+    data = result.to_dict()
+    if triage:
+        data["emt_triage"] = {pid: {"priority": t["level"],
+                                    "triggers": [f"P{x.level} {x.situation}: {x.detail}" for x in t["triggers"]],
+                                    "not_checked": t["unknown"]} for pid, t in triage.items()}
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
 
 
-def write_results_csv(result: ScreeningResult, path: str | Path) -> Path:
-    """Write one row per plant and one row per group, for spreadsheets."""
+def write_results_csv(result: ScreeningResult, path: str | Path, triage: dict | None = None) -> Path:
+    """Write one row per plant and one row per group, for spreadsheets.
+
+    With ``triage`` (scan --emt-triage), two columns are added: emt_priority and emt_triggers.
+    """
     path = Path(path)
     cols = ["type", "id", "group", "poi_name", "scmva", f"rating_{result.basis.lower()}",
             "ratio", "flag", f"max_{result.basis.lower()}_no_flag",
             "method_source", "tool_version", "run_utc", "scrif", "escr", "n1_ratio", "n1_outage", "cscr"]
+    tcols = ["emt_priority", "emt_triggers"] if triage else []
+    cols = cols + tcols
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
@@ -204,11 +214,15 @@ def write_results_csv(result: ScreeningResult, path: str | Path) -> Path:
                         f"{p.scmva:.2f}", f"{p.rating:.2f}", f"{p.scr:.3f}", p.flag,
                         f"{p.max_rating_no_flag:.1f}",
                         result.source, result.tool_version, result.run_utc,
-                        _f3(p.scrif), _f3(p.escr), _f3(p.n1_scr), p.n1_outage or "", ""])
+                        _f3(p.scrif), _f3(p.escr), _f3(p.n1_scr), p.n1_outage or "", ""]
+                       + ([triage[p.plant_id]["level"], " | ".join(f"P{x.level} {x.situation}: {x.detail}"
+                                                                    for x in triage[p.plant_id]["triggers"])]
+                          if triage and p.plant_id in triage else ([""] * len(tcols))))
         for g in result.groups:
             w.writerow(["group (WSCR)", g.group, g.group, "; ".join(g.plant_ids), "",
                         f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag, "",
-                        result.source, result.tool_version, result.run_utc, "", "", "", "", _f3(g.cscr)])
+                        result.source, result.tool_version, result.run_utc, "", "", "", "", _f3(g.cscr)]
+                       + [""] * len(tcols))
     return path
 
 

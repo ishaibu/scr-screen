@@ -3,7 +3,7 @@
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | Current through v0.3.1 |
+| Status | Current through v0.4.0 |
 | Last updated | 2026-11-07 |
 | License | MIT |
 
@@ -19,6 +19,7 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 - Short-circuit MVA from a network model by two methods: **classical flat-start** and **IEC 60909**.
 - **Bus scan:** SCR at every bus for a hypothetical plant size.
 - **Network-aware metrics (v0.3):** interaction factors, SCRIF, CSCR and ESCR; suggested groups; N-1 worst-case SCR.
+- **EMT study triage (v0.4):** a system strength data sheet per POI (Thévenin impedance, intact, N-1 and minimum generation) and a priority for an EMT study, from the situations listed in NERC's 2024 EMT guideline.
 - **Largest plant before a weak flag** at each location.
 - **Cost screening:** synchronous condenser mitigation, gen-tie line, and POI substation cost per candidate bus, from user-supplied costs.
 - **Own networks:** pandapower JSON, Excel, and MATPOWER files; a readiness check; a converter.
@@ -26,10 +27,10 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 - Self-contained **HTML report** with network map, method comparison, and interactive what-if inputs; CSV and JSON results.
 - Command line and Python API.
 
-### 1.2 Out of scope (as of v0.3)
+### 1.2 Out of scope (as of v0.4)
 
 - **Not a substitute for interconnection studies.** SCR-based metrics are screening indicators only. Weak-grid behavior is system- and equipment-specific and may require positive-sequence and EMT studies.
-- EMT simulation. Interconnection studies must use equipment-specific EMT models (NERC, 2023); SCR-Screen screens which locations need them (EMT triage planned for v0.4).
+- EMT simulation. Interconnection studies must use equipment-specific EMT models (NERC, 2023); SCR-Screen's EMT triage (v0.4) lists the situations that call for them; it does not decide whether a study is required.
 - Retirement scenarios and queue build-out; PSS/E `.raw` import (planned).
 - Frequency-domain metrics (impedance scans, Q/V sensitivity).
 - **Network upgrade costs** (thermal, voltage, stability). These need power flow and interconnection-queue studies.
@@ -85,6 +86,26 @@ Each in-service line circuit (one circuit of a parallel entry) and transformer u
 $$Z'_{kk} = Z_{kk} + \frac{y\,(Zm)_k^2}{1 - y\,m^T Z m}$$
 
 A generator unit (admittance y to ground at bus k) is removed the same way with m = e_k (v0.3.1). Outages for which the denominator vanishes leave buses with no source; they are skipped and listed. Verified against rebuilding and re-inverting the network for every outage of the IEEE 39-bus case (agreement within 10⁻⁹).
+
+### 2.3d Thévenin data and EMT triage (v0.4)
+
+For a POI at bus i and each condition (intact; worst single outage, from the N-1 screen, which keeps the complex diagonal term; minimum generation, from a second Z-bus with the `--gen-out` generators out):
+
+    Z_th = Z_ii (pu, 100 MVA base);  Z_ohm = Z_th × kV² / 100;  X/R = X / R (shown as ∞ when R = 0)
+    SCMVA = 100 / |Z_th|;  I_sc = SCMVA / (√3 × kV) kA;  SCR = SCMVA / P;  ESCR = (SCMVA − Q_c) / P
+
+all at 1.0 pu pre-fault voltage with inverter-based resources excluded (classical method only). The minimum-generation case is computed with the network otherwise intact.
+
+**Proximity.** An existing IBR (in-service `sgen` or `storage`) or a device is *nearby* when its pair interaction with the POI, max(IF_ij, IF_ji) with IF_ij = |Z_ij / Z_jj|, is at least the threshold (default 0.5, the same judgment value as `interactions`). For a two-terminal device the larger of its terminals is used.
+
+**Devices.** Series compensation: in-service lines with negative series reactance (`x_ohm_per_km < 0`). FACTS: `svc`, `ssc`, `tcsc`. HVdc: `vsc`, `dcline`. For the strength calculation, `ssc`, `vsc` and `dcline` are set out of service (converter-interfaced, so excluded like other IBRs; a dc line has no AC path). A `tcsc` carries its line, so removing it would change the network; an in-service TCSC stops the triage with a message instead.
+
+**Priority** (SCR-Screen's ordering; NERC lists the situations without ranking them):
+1. any strength metric (SCR and ESCR in every condition; group WSCR, CSCR and SCRIF, intact) below the very-weak threshold; series compensation, FACTS or HVdc nearby (found or answered yes); a system event that positive-sequence models cannot reproduce (answered yes; NERC says a new EMT study is needed); or the lowest SCR below the OEM minimum SCR;
+2. any metric below the weak threshold; other IBRs nearby; or any other situation answered yes;
+3. otherwise ("no screening trigger found", with NERC's note that high system strength alone should not rule out EMT studies).
+
+Answers of "unknown" (or no answer) never change the priority; they are listed as not checked. The `--poi-info` questions cover the rest of NERC's Chapter 1 list: Stability Criteria (`rms_stability_concerns`), EMT Studies Following System Events (`unexplained_system_event`), and the "System Topology or Conditions with Stability Risks" items (`pre_existing_oscillation`, `series_compensation`, `facts_nearby`, `hvdc_nearby`, `high_ibr_penetration`, `ras`, `distance_relays_declining_fault_current`, `decreasing_strength_trend`, `rocof_inertia_trend`); "other IBRs" and low system strength are found in the model.
 
 ### 2.4 Largest plant before a weak flag
 
@@ -184,11 +205,13 @@ Plant size; weak and very-weak thresholds; and, with cost screening, target SCR,
    - largest-plant chart
    - cost screening table
    - WSCR group comparison (direct mode, and network scans with `--groups`; placed after the SCR chart)
+   - EMT study triage (scan with `--emt-triage`)
    - results tables
    - method and assumptions, and the disclaimer
 2. **Results CSV/JSON** (`--out`), including the largest plant before a weak flag.
 3. **Cost CSV** (`--cost-out`).
 4. **Console summary.**
+5. **EMT triage report** (`triage --report`): printable HTML with a summary and one data sheet per POI; `triage --out` writes CSV (one row per POI and condition) or JSON.
 
 ---
 
@@ -208,7 +231,10 @@ scr-screen/
 │   ├── netmap.py      # network map SVG
 │   ├── io.py          # plant CSV input; results CSV/JSON; input template
 │   ├── report.py      # self-contained HTML report with what-if inputs
-│   ├── cli.py         # command line: template | run | scan | check | convert | sites-template
+│   ├── strength.py    # interaction factors, SCRIF, CSCR, ESCR, N-1 (Sherman–Morrison)
+│   ├── triage.py      # EMT triage: Thévenin data, devices, nearby IBRs, POI information, priorities
+│   ├── triage_report.py # EMT triage HTML data sheets, CSV and JSON
+│   ├── cli.py         # command line: example | template | run | scan | check | convert | sites-template | interactions | triage
 │   └── __main__.py    # allows: python -m scr_screen
 ├── tests/             # pytest; hand-calculated cases, examples, notebook
 ├── examples/          # IEEE 39-bus network (assumed data), site cost example (illustrative), templates, notebook
@@ -281,6 +307,11 @@ T11 is checked by running the report's code in a simulated browser during develo
 | D19 | Group member sizes (v0.3.1) | Optional `mw`, `mva` columns in the groups file (both or neither). SCRIF for a fixed-size member is shown in the group panel only, since the results table row describes the scan's plant |
 | D20 | N-1 outages (v0.3.1) | Generator units added to lines and transformer units (Sherman–Morrison on one diagonal term); external grids are network equivalents and are not removed |
 | D21 | Plant MVA rating (v0.3.1) | Nameplate (inverter) MVA, as NERC's MVA metrics use; or inverters × inverter MVA; or an estimate MW ÷ power factor at the POI, labeled as an estimate (less conservative than nameplate). Only one source per plant; MW remains the default basis |
+| D22 | EMT triage source (v0.4) | NERC Reliability Guideline, *Recommended Practices for Performing EMT System Studies for IBRs* (Dec 2024), Chapter 1: if any one listed situation applies, EMT studies should be considered. The tool checks what a model can show and asks the user about the rest |
+| D23 | Priority levels (v0.4) | Three levels, defined in §2.3d. They are the tool's ordering of work, stated as such in every output; level 3 always repeats NERC's note that high system strength alone does not rule out EMT studies |
+| D24 | Nearby test (v0.4) | Pair interaction factor ≥ 0.5 (user-configurable), the same judgment value as `interactions`; not an industry standard |
+| D25 | Conditions (v0.4) | Intact, worst N-1 (lines, transformers, generators) and, when generators are named, minimum generation; group metrics intact only |
+| D26 | Unchanged outputs (v0.4) | New behavior only with `triage` or `scan --emt-triage`; every other output is identical to v0.3.1 (checked file by file) |
 
 ---
 
@@ -298,3 +329,4 @@ T11 is checked by running the report's code in a simulated browser during develo
 10. IEEE Std 551-2006 (Violet Book), *IEEE Recommended Practice for Calculating AC Short-Circuit Currents in Industrial and Commercial Power Systems*.
 11. P. Sharma et al., *Existing Methods for Grid Strength Assessment and Role of Hydropower in Future Grids*, NREL/TP-5D00-94961, Nov 2025.
 12. NERC, *Electromagnetic Transient Modeling for BPS-Connected Inverter-Based Resources*, Reliability Guideline, Mar 2023.
+13. NERC, *Reliability Guideline: Recommended Practices for Performing EMT System Studies for Inverter-Based Resources*, Dec 2024.

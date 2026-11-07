@@ -10,7 +10,7 @@
 
 SCR-Screen helps interconnection, planning, and siting engineers find weak-grid locations **early**, before detailed studies are commissioned. It calculates short-circuit strength from a network model, screens single plants (SCR) and groups of nearby plants (WSCR), and produces a clear, self-contained HTML report.
 
-> **Screening only.** SCR-Screen provides screening-level indicators of system strength. Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the requirements of the applicable transmission provider.
+> **Screening only.** SCR-Screen provides screening-level indicators of system strength. Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the requirements of the applicable Transmission Provider (TP) or Independent System Operator (ISO) or Regional Transmission Organization (RTO).
 
 <p align="center">
   <a href="https://ishaibu.github.io/scr-screen/demo/"><img src="https://raw.githubusercontent.com/ishaibu/scr-screen/main/docs/images/network-map.gif" width="760"
@@ -44,6 +44,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Interaction factors | `scr-screen interactions` lists how strongly buses affect each other and suggests groups for `--groups` |
 | N-1 worst case | `scan --n1` removes each line circuit, transformer unit and generator unit in turn and reports each bus's lowest SCR and the outage that causes it |
 | Minimum-generation case | `scan --gen-out 30,32` takes the generators at those buses out of service for the whole scan |
+| EMT study triage | `scr-screen triage` writes a system strength data sheet for each point of interconnection (SCR and ESCR intact, worst N-1 and minimum generation; WSCR, CSCR, SCRIF; Thévenin R, X, X/R in pu and ohms; fault current) and a priority for an EMT study, based on the situations listed in NERC's 2024 EMT guideline. `scan --emt-triage` adds the priority to every bus, live with the plant-size slider |
 | Rating basis | MW (default) or MVA, in direct mode (`run --basis MVA`) and network scans (`scan --basis MVA`), giving NERC's WSCR-MVA and MVA-based CSCR. MW stays the default; MVA is used only when you choose it. Devices with no active power (e.g. STATCOMs: 0 MW plus an MVA rating) count on the MVA basis |
 | Plant MVA rating | The nameplate (inverter) MVA rating, as NERC's MVA metrics use. Give it directly, as the inverter count × each inverter's MVA (e.g. 55 × 4.2 MVA = 231 MVA), or, early in a project, **estimate** it from the power factor required at the POI (MVA = MW ÷ power factor, labeled as an estimate) |
 | Group sizes | A groups file can give a member its own size (`mw`, `mva` columns), e.g. an existing plant or a STATCOM next to the plant being screened |
@@ -62,7 +63,7 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 ## Try it without installing
 
 - **[SCR-Screen Lite](https://ishaibu.github.io/scr-screen/lite/)**: browser calculator. Type each plant's short-circuit MVA and MW to get SCR, flags, WSCR, the largest plant before a weak flag, and condenser cost. Runs entirely in your browser.
-- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show WSCR, CSCR and SCRIF, the heat map shows weak areas, and the N-1 view shows each bus's worst single outage.
+- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show WSCR, CSCR and SCRIF, the heat map shows weak areas, the N-1 view shows each bus's worst single outage, and the EMT study triage gives each bus a priority.
 
 ## Installation
 
@@ -157,7 +158,43 @@ bus,group,mw,mva
 
 **Minimum-generation case:** `--gen-out 30,32` takes the generators at those buses out of service for the whole scan. The weakest short-circuit levels usually occur with fewer units online.
 
-Run `scr-screen --help`, `scr-screen run --help` or `scr-screen scan --help` for all options (`--basis`, `--plant-mva`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--gen-out`, `--no-heatmap`).
+Run `scr-screen --help`, `scr-screen run --help`, `scr-screen scan --help` or `scr-screen triage --help` for all options (`--basis`, `--plant-mva`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--gen-out`, `--no-heatmap`, `--emt-triage`, `--ibr-threshold`, `--poi-info`).
+
+## EMT study triage
+
+NERC's Reliability Guideline *Recommended Practices for Performing EMT System Studies for Inverter-Based Resources* (December 2024, Chapter 1) lists situations in which EMT studies should be considered, and says that if any one of them applies, EMT studies should be considered. It also notes that a high level of system strength alone should not rule out the need for EMT studies. SCR-Screen checks the situations it can find in a network model and asks you about the rest:
+
+| Situation (NERC 2024, Chapter 1) | How SCR-Screen checks it |
+|---|---|
+| Low system strength | SCR (and ESCR where capacitor banks exist) intact, under the worst single outage, and in a minimum-generation case (`--gen-out`); WSCR, CSCR and SCRIF for grouped POIs |
+| Other IBRs nearby | Existing `sgen` and `storage` elements whose interaction factor with the POI, max(IF_ij, IF_ji), is at least `--ibr-threshold` (default 0.5) |
+| Series compensation, FACTS, HVdc nearby | Found in the model (lines with negative series reactance; `svc`, `ssc`, `tcsc`; `vsc`, `dcline`), with the same interaction test; or answered yes |
+| Stability Criteria (poor positive-sequence stability results); EMT Studies Following System Events (an event positive-sequence models cannot reproduce); pre-existing oscillation or oscillatory modes; high IBR penetration level; specialized protection schemes such as RAS; distance-relay-protected lines with declining fault current levels; a trend of decreasing system strength; a trend of increasing RoCoF or decreasing inertia | Answered in a `--poi-info` file (yes / no / unknown); unanswered ones are listed as not checked |
+| The inverter's minimum SCR | Optional `oem_min_scr` in the `--poi-info` file, compared with the lowest SCR |
+
+```bash
+scr-screen triage ieee39_triage_example.json --buses 12,16,28 --plant-mw 500 --poi-info ieee39_poi_info_example.csv --report triage.html --open
+scr-screen triage ieee39_assumed.json --buses 11,12,13,16,17 --plant-mw 1500 --groups ieee39_groups_example.csv --gen-out 38,39 --report triage1500.html --open
+scr-screen scan ieee39_triage_example.json --plant-mw 500 --emt-triage --report scan_triage.html --open
+```
+
+**Priorities** order the work; they are SCR-Screen's judgment, not NERC's (NERC does not rank the situations):
+
+| Priority | When |
+|---|---|
+| 1: EMT study recommended (high priority) | Any strength metric below the very-weak threshold in any condition; series compensation, FACTS or HVdc nearby; a system event that positive-sequence models cannot reproduce; or the lowest SCR below the OEM minimum SCR |
+| 2: EMT study should be considered | Any strength metric below the weak threshold; other IBRs nearby; or any other situation answered yes |
+| 3: no screening trigger found | None of the above. This does not rule out an EMT study (NERC, 2024) |
+
+A `--poi-info` file has one row per POI (bus label), or a row `all` for every POI not listed:
+
+```
+poi,rms_stability_concerns,unexplained_system_event,pre_existing_oscillation,series_compensation,facts_nearby,hvdc_nearby,high_ibr_penetration,ras,distance_relays_declining_fault_current,decreasing_strength_trend,rocof_inertia_trend,oem_min_scr,notes
+all,unknown,no,no,no,no,no,unknown,unknown,unknown,unknown,unknown,,
+28,unknown,no,no,no,no,no,unknown,unknown,unknown,unknown,unknown,3.0,assumed OEM minimum SCR
+```
+
+The example network `ieee39_triage_example.json` is the IEEE 39-bus case with three **assumed, illustrative** existing IBRs (solar at bus 13, wind at bus 26, battery at bus 4); they are not part of the IEEE test system and, as IBRs, do not change any SCR. HVdc converters, dc lines and STATCOMs in a model are listed for the triage and left out of the short-circuit calculation (converter-interfaced, like other IBRs); a TCSC stops the calculation with a message, since it carries the line. The triage uses the classical method.
 
 ## Use your own network
 
@@ -258,6 +295,7 @@ See [`examples/walkthrough.ipynb`](examples/walkthrough.ipynb) for a step-by-ste
 **CSCR** = short-circuit MVA with the group's POIs tied together ÷ ΣP (NERC ties the plants' medium-voltage buses, which are not in a transmission model, and divides by nominal MVA: use `--basis MVA` to match)
 **ESCR** = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant rating
 **N-1**: each line circuit, transformer unit and synchronous generator unit is removed in turn; outages that would leave buses with no source are skipped and listed
+**Thévenin impedance** at a POI: Z_th = Zᵢᵢ (pu on 100 MVA); in ohms, Z_th × kV² ÷ 100; X/R = X ÷ R; fault current I_sc = SCMVA ÷ (√3 × kV) kA, at 1.0 pu pre-fault voltage with IBRs excluded
 
 P is the plant rating on the chosen basis: MW (default) or MVA.
 
@@ -294,6 +332,7 @@ Full details: [design specification](docs/design-spec.md).
 - The classical method ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
 - Real transmission models are often restricted (e.g. CEII in the U.S.). SCR-Screen ships only public test data; users run it on their own models.
 - Cost screening is screening-level only and excludes network upgrades; all costs are user inputs.
+- The EMT triage lists situations that call for an EMT study; it does not decide whether one is required, and the transmission provider's requirements govern. It finds only what the model contains, so devices modeled as equivalent impedances, and situations a model cannot show, must be answered in the `--poi-info` file.
 
 ## Verification
 
@@ -307,10 +346,10 @@ Every formula is covered by automated tests with hand-calculated expected values
 - **v0.2.0** (October 2026): WSCR groups in network scans (`--groups`), live group results in the report.
 - **v0.3.0** (November 2026): network-aware screening: interaction factors and SCRIF, CSCR, ESCR, suggested groups (`interactions`), N-1 worst case (`--n1`), heat-map shading and N-1 view on the network map.
 - **v0.3.1** (November 2026): MVA basis in network scans (NERC's WSCR-MVA and MVA-based CSCR), STATCOMs and other 0 MW devices, per-member group sizes, generator outages in N-1, minimum-generation case (`--gen-out`), MW/MVA switch in SCR-Screen Lite.
+- **v0.4.0** (November 2026): EMT study triage: a system strength data sheet per POI (Thévenin R, X, X/R, intact, N-1 and minimum generation) and a priority based on the situations in NERC's 2024 EMT guideline (`triage`, `scan --emt-triage`).
 
 **Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
 
-- **v0.4:** EMT triage: a point-of-interconnection system strength data sheet (SCR, ESCR, SCRIF, CSCR, X/R, Thévenin impedance) with a clear "EMT study recommended" flag based on cited criteria.
 - **Later:** PSS/E `.raw` import, generator retirement and interconnection-queue build-out scenarios, and SCRIF in SCR-Screen Lite.
 
 ## Feedback and contributions
@@ -330,6 +369,7 @@ Found a bug, have a question, or use SCR-Screen in your work? Please [open an is
 9. IESO, *Preliminary Connection Guidance for the Long-Term 2 RFP*.
 10. AESO, *Connection Requirements for Inverter-Based Resources*.
 11. T. Athay, R. Podmore, S. Virmani, "A Practical Method for the Direct Analysis of Transient Stability," *IEEE Trans. PAS*, vol. PAS-98, no. 2, 1979 (IEEE 39-bus system).
+12. NERC, *Reliability Guideline: Recommended Practices for Performing EMT System Studies for Inverter-Based Resources*, December 2024.
 
 ## How to cite
 

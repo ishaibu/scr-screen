@@ -5,6 +5,8 @@
     ieee39_sites_example.csv   site cost file with ILLUSTRATIVE costs for four candidate buses
     ieee39_groups_example.csv  bus groups screened together with WSCR (scan --groups)
     ieee39_groups_mva_example.csv  the same groups plus an ILLUSTRATIVE 200 MVA STATCOM at bus 12 (MVA basis)
+    ieee39_triage_example.json the same network plus three ASSUMED existing IBRs, for EMT triage
+    ieee39_poi_info_example.csv ILLUSTRATIVE answers for situations a model cannot show (triage --poi-info)
     plants_template.csv        direct-mode input with example plants
 """
 
@@ -16,7 +18,8 @@ from pathlib import Path
 from .metrics import InputError
 
 FILES = ("ieee39_assumed.json", "ieee39_sites_example.csv", "ieee39_groups_example.csv",
-         "ieee39_groups_mva_example.csv", "plants_template.csv")
+         "ieee39_groups_mva_example.csv", "ieee39_triage_example.json", "ieee39_poi_info_example.csv",
+         "plants_template.csv")
 
 GUIDE = """SCR-Screen example files
 =========================
@@ -29,6 +32,13 @@ ieee39_groups_example.csv Two groups of nearby buses screened together with WSCR
                           (G1: buses 11 and 13; G2: buses 16 and 17).
 ieee39_groups_mva_example.csv  The same groups plus an ILLUSTRATIVE 200 MVA STATCOM
                           (0 MW) at bus 12 in G1, for the MVA basis.
+ieee39_triage_example.json  The same network plus three ASSUMED existing IBRs
+                          (solar at bus 13, wind at bus 26, battery at bus 4), for
+                          EMT triage. They are illustrative, not part of the IEEE
+                          test system; as IBRs they do not change any SCR.
+ieee39_poi_info_example.csv ILLUSTRATIVE answers (yes / no / unknown) for situations
+                          a network model cannot show, and an assumed OEM minimum
+                          SCR of 3.0 at bus 28 (triage --poi-info).
 plants_template.csv       Direct-mode input with example plants.
 
 Try, from inside this folder:
@@ -42,6 +52,9 @@ Try, from inside this folder:
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --plant-mva 1650 --basis MVA --groups ieee39_groups_mva_example.csv --report mva.html --open
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --power-factor 0.95 --basis MVA --report mva_estimate.html --open
   scr-screen scan ieee39_assumed.json --plant-mw 1500 --gen-out 38,39 --report mingen.html --open
+  scr-screen triage ieee39_triage_example.json --buses 12,16,28 --plant-mw 500 --poi-info ieee39_poi_info_example.csv --report triage.html --open
+  scr-screen triage ieee39_assumed.json --buses 11,12,13,16,17 --plant-mw 1500 --groups ieee39_groups_example.csv --gen-out 38,39 --report triage1500.html --open
+  scr-screen scan ieee39_triage_example.json --plant-mw 500 --emt-triage --report scan_triage.html --open
 
 Screening only: results do not replace interconnection studies.
 """

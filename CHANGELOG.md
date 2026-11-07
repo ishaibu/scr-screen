@@ -3,6 +3,23 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-07
+
+EMT study triage, based on the situations listed in NERC's Reliability Guideline *Recommended Practices for Performing EMT System Studies for Inverter-Based Resources* (December 2024, Chapter 1).
+
+### Added
+- **`scr-screen triage`**: a system strength data sheet for each listed point of interconnection (`--buses`): SCR and ESCR with the network intact, under the worst single outage (N-1) and, with `--gen-out`, in a minimum-generation case; WSCR, CSCR and SCRIF for grouped POIs (`--groups`); the Thévenin impedance (R, X, |Z| in pu on 100 MVA and in ohms, X/R) and the fault current in kA for each condition. Printable HTML report (one page per POI), CSV (one row per POI and condition) and JSON.
+- **EMT study priority** for each POI: 1 (EMT study recommended, high priority), 2 (EMT study should be considered) or 3 (no screening trigger found), with the reason for each trigger. Priority 1: a strength metric below the very-weak threshold in any condition; series compensation, FACTS or HVdc nearby; a system event that positive-sequence models cannot reproduce; or SCR below the OEM minimum. Priority 2: a metric below the weak threshold; other IBRs nearby; or any other situation answered yes. The priorities are SCR-Screen's ordering of the work; NERC lists the situations without ranking them.
+- **Nearby existing IBRs**: in-service `sgen` and `storage` elements whose interaction factor with the POI, max(IF_ij, IF_ji), is at least `--ibr-threshold` (default 0.5).
+- **Series compensation, FACTS and HVdc** found in the model (lines with negative series reactance; `svc`, `ssc`, `tcsc`; `vsc`, `dcline`) and their proximity to each POI. HVdc converters, dc lines and STATCOMs are left out of the short-circuit calculation (converter-interfaced, like other IBRs) with a note; an in-service TCSC stops the triage with a message.
+- **`--poi-info` file**: yes / no / unknown answers for the situations in NERC's Chapter 1 that a model cannot show (poor positive-sequence stability results; a system event that positive-sequence models cannot reproduce; pre-existing oscillation or oscillatory modes; series-compensated lines; FACTS devices; HVdc lines; high IBR penetration level; specialized protection schemes such as RAS; distance-relay-protected lines with declining fault current levels; a trend of decreasing system strength; a trend of increasing RoCoF or decreasing inertia) and an optional OEM minimum SCR. Unanswered situations are listed as not checked.
+- **`scan --emt-triage`** (implies `--n1`): an EMT priority column and an "EMT study triage" section in the scan report, updated live with the plant-size slider and thresholds; `emt_priority` and `emt_triggers` columns in the results CSV and an `emt_triage` entry in the results JSON. `--ibr-threshold` and `--poi-info` work here too.
+- Example files `ieee39_triage_example.json` (the IEEE 39-bus case with three assumed, illustrative existing IBRs) and `ieee39_poi_info_example.csv` (illustrative answers and an assumed OEM minimum SCR).
+- Verification V5: Thévenin data sheet for bus 12, intact and worst N-1, by hand from the impedance matrix.
+
+### Changed
+- Nothing for existing commands and options: without the new options, every output is the same as v0.3.1 (checked file by file on the example cases). The scan report's built-in script gains the triage functions.
+
 ## [0.3.1] - 2026-11-07
 
 Rating basis and contingency coverage, completing the metrics in NERC's 2017 comparison table (SCR, CSCR, WSCR-MW, WSCR-MVA, SCRIF).
