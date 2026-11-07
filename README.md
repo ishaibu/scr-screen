@@ -377,7 +377,7 @@ If you use SCR-Screen in your work, please cite it:
 
 > Ibrahim, S. (2026). *SCR-Screen: open-source short-circuit ratio screening for inverter-based resource interconnection* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23130832
 
-This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.3.1: 10.5281/zenodo.24025222; v0.3.0: 10.5281/zenodo.23867280; v0.2.0: 10.5281/zenodo.23441700; v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
+This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.4.0: 10.5281/zenodo.24044098; v0.3.1: 10.5281/zenodo.24025222; v0.3.0: 10.5281/zenodo.23867280; v0.2.0: 10.5281/zenodo.23441700; v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
 
 ## License and author
 
