@@ -17,7 +17,7 @@ SCR-Screen helps interconnection, planning, and siting engineers find weak-grid 
   alt="Network map of the IEEE 39-bus system: as the plant size grows from 300 to 1,500 MW, weak buses turn orange and red with heat-map shading, then the N-1 view shows each bus's worst single outage"></a>
 </p>
 <p align="center"><em>A full IEEE 39-bus scan (assumed data): as the plant size grows from 300 to 1,500 MW,
-weak locations light up; the N-1 view then shows each bus's worst single outage, down to an SCR of 0.91.
+weak locations light up; the N-1 view contingency then shows each bus's worst single outage, down to an SCR of 0.91.
 <a href="https://ishaibu.github.io/scr-screen/demo/">Open the interactive demo</a> and drag the slider yourself.</em></p>
 
 ---
@@ -337,7 +337,7 @@ If you use SCR-Screen in your work, please cite it:
 
 > Ibrahim, S. (2026). *SCR-Screen: open-source short-circuit ratio screening for inverter-based resource interconnection* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23130832
 
-This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.3.0: 10.5281/zenodo.23867280; v0.2.0: 10.5281/zenodo.23441700; v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
+This DOI always points to the latest version. To cite a specific version, use its DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.23130832) (v0.3.1: 10.5281/zenodo.24025222; v0.3.0: 10.5281/zenodo.23867280; v0.2.0: 10.5281/zenodo.23441700; v0.1.0: 10.5281/zenodo.23130833). GitHub's **Cite this repository** button (right sidebar) also gives APA and BibTeX formats.
 
 ## License and author
 
