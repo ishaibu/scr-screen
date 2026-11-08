@@ -10,7 +10,7 @@
 
 SCR-Screen helps interconnection, planning, and siting engineers find weak-grid locations **early**, before detailed studies are commissioned. It calculates short-circuit strength from a network model, screens single plants (SCR) and groups of nearby plants (WSCR), and produces a clear, self-contained HTML report.
 
-> **Screening only.** SCR-Screen provides screening-level indicators of system strength. Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the requirements of the applicable Transmission Provider (TP) or Independent System Operator (ISO) or Regional Transmission Organization (RTO).
+> **Screening only.** SCR-Screen provides screening-level indicators of system strength. Results do not replace interconnection studies, detailed positive-sequence or EMT analysis, or the requirements of the applicable transmission provider, Independent System Operator (ISO) or Regional Transmission Organization (RTO).
 
 <p align="center">
   <a href="https://ishaibu.github.io/scr-screen/demo/"><img src="https://raw.githubusercontent.com/ishaibu/scr-screen/main/docs/images/network-map.gif" width="760"

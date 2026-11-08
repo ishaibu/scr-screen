@@ -196,7 +196,7 @@ significant figures; the small differences come from rounding the inputs.
 Order check: SCR (4.48 / 4.31) > SCRIF (2.53 / 2.40) and CSCR (2.46) > WSCR (2.20),
 as expected for two buses with interaction factors near 0.8.
 
-**Outcome:** Match / Mismatch   <!-- choose after checking -->
+**Outcome:** Match.
 
 ### What this proves
 - The interaction factor, SCRIF and CSCR formulas are applied correctly to the
@@ -263,7 +263,7 @@ Snippet used to print Z₃₈,₃₈ and generator 7's data (run in the reposito
 Hand values from rounded inputs agree with the tool to about four significant figures.
 Step-by-step working is in the V4 hand-calculation worksheet.
 
-**Outcome:** Match / 
+**Outcome:** Match.
 
 ### What this proves
 - The MVA basis is applied to WSCR, CSCR and SCRIF in network scans, and CSCR then
@@ -333,7 +333,7 @@ Snippet used to print the impedance-matrix terms (run in the repository folder):
 Hand values use the impedance-matrix terms rounded to 7 decimals, so the last digit of
 R′ differs slightly (0.0025192 vs 0.0025194); every reported value agrees to the digits shown. Step-by-step working is in the V5 hand-calculation worksheet.
 
-**Outcome:** Match / 
+**Outcome:** Match.
 
 ### What this proves
 - The data sheet reports the Thévenin impedance at the POI correctly in pu and ohms,
