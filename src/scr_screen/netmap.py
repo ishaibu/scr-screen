@@ -105,9 +105,9 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
         data = (f" data-bus='{b}' data-x='{x:.1f}' data-y='{y:.1f}' data-label='{label}'"
                 f" data-src='{1 if src else 0}'")
         if b in scmva:
-            data += f" data-scmva='{scmva[b]:.10g}'"
+            data += f" data-scmva='{scmva[b]:.17g}'"
         if b in n1:
-            data += f" data-n1='{n1[b]:.10g}'"
+            data += f" data-n1='{n1[b]:.17g}'"
         halo = (f"<circle cx='{x:.1f}' cy='{y:.1f}' r='9' class='halo {cls}'/>" if b in highlight else "")
         if src:
             s_ = 15 if big else 12
@@ -149,9 +149,9 @@ def _heat_layer(buses, px, edges, results, scmva, n1) -> str:
         x, y = px[b]
         data = f" data-bus='{b}'"
         if b in scmva:
-            data += f" data-scmva='{scmva[b]:.10g}'"
+            data += f" data-scmva='{scmva[b]:.17g}'"
         if b in n1:
-            data += f" data-n1='{n1[b]:.10g}'"
+            data += f" data-n1='{n1[b]:.17g}'"
         out.append(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{r:.1f}' class='hz {cls}'{data}/>")
     out.append("</g>")
     return "".join(out)

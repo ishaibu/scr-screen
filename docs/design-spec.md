@@ -3,8 +3,8 @@
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | Current through v0.4.0 |
-| Last updated | 2026-11-07 |
+| Status | Current through v0.5.0 |
+| Last updated | 2026-11-14 |
 | License | MIT |
 
 ---
@@ -27,7 +27,7 @@ SCR-Screen is an open-source Python tool that screens **system strength** at the
 - Self-contained **HTML report** with network map, method comparison, and interactive what-if inputs; CSV and JSON results.
 - Command line and Python API.
 
-### 1.2 Out of scope (as of v0.4)
+### 1.2 Out of scope (as of v0.5)
 
 - **Not a substitute for interconnection studies.** SCR-based metrics are screening indicators only. Weak-grid behavior is system- and equipment-specific and may require positive-sequence and EMT studies.
 - EMT simulation. Interconnection studies must use equipment-specific EMT models (NERC, 2023); SCR-Screen's EMT triage (v0.4) lists the situations that call for them; it does not decide whether a study is required.
@@ -131,7 +131,7 @@ $$\Delta SCMVA \approx \frac{S_{cond}}{X''_d + X_t} \quad\Rightarrow\quad S_{con
 |---|---|---|
 | C1 | IBR fault contribution | Always excluded from SCMVA (sgen and storage set out of service, or not modeled as sources). |
 | C2 | Fault type | Balanced three-phase fault. |
-| C3 | Short-circuit method | User-selectable. **Classical flat-start** (default): S = V² / \|Z_th\| from the network impedance matrix, 1.0 pu pre-fault, sub-transient reactances, no correction factors; loads, shunts, and line charging ignored; nominal transformer taps. **IEC 60909** via pandapower: voltage factor c = 1.1 (max case) plus generator and transformer impedance correction factors. Reports state the method used. |
+| C3 | Short-circuit method | User-selectable. **Classical flat-start** (default): S = V² / \|Z_th\| from the network impedance matrix, 1.0 pu pre-fault, sub-transient reactances, no correction factors; loads, shunts, and line charging ignored; nominal transformer ratio (tap positions and off-nominal turns ratios are not modeled; the number of such transformers is reported). Transformer and generator impedances are converted from the equipment's rating and rated voltage to the 100 MVA base and the bus nominal voltage: z = z_rated × (100 ÷ S_rated) × (V_rated ÷ V_bus)², the transformer referred to its low-voltage side (v0.5; Decision D27). **IEC 60909** via pandapower: voltage factor c = 1.1 (max case) plus generator and transformer impedance correction factors. Reports state the method used. |
 | C4 | Units | pandapower's `skss_mw` column is apparent power; relabeled MVA in all outputs. |
 | C5 | Thresholds | User-configurable (Section 4). |
 | C6 | Isolated buses | Buses with no path to any source are skipped in scans and listed in the notes; requesting one directly is an error. |
@@ -211,7 +211,8 @@ Plant size; weak and very-weak thresholds; and, with cost screening, target SCR,
 2. **Results CSV/JSON** (`--out`), including the largest plant before a weak flag.
 3. **Cost CSV** (`--cost-out`).
 4. **Console summary.**
-5. **EMT triage report** (`triage --report`): printable HTML with a summary and one data sheet per POI; `triage --out` writes CSV (one row per POI and condition) or JSON.
+5. **Dashboard** (`scan --dashboard`, v0.5): the scan report's content as a single self-contained file with a sidebar of views (Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions), inputs that stay in place, the weakest locations, and the details of a selected bus (including Thévenin R, X, \|Z\| in ohms, X/R and fault current, intact and worst N-1). Search, flagged-only filter and sorting in the rankings; map colored by SCR, N-1 SCR or EMT priority; print (all views) and CSV download of the values shown.
+6. **EMT triage report** (`triage --report`): printable HTML with a summary and one data sheet per POI; `triage --out` writes CSV (one row per POI and condition) or JSON.
 
 ---
 
@@ -234,6 +235,7 @@ scr-screen/
 │   ├── strength.py    # interaction factors, SCRIF, CSCR, ESCR, N-1 (Sherman–Morrison)
 │   ├── triage.py      # EMT triage: Thévenin data, devices, nearby IBRs, POI information, priorities
 │   ├── triage_report.py # EMT triage HTML data sheets, CSV and JSON
+│   ├── dashboard.py   # dashboard layout: the scan report rearranged into views (no calculation of its own)
 │   ├── cli.py         # command line: example | template | run | scan | check | convert | sites-template | interactions | triage
 │   └── __main__.py    # allows: python -m scr_screen
 ├── tests/             # pytest; hand-calculated cases, examples, notebook
@@ -249,6 +251,7 @@ Design rules:
 - Each short-circuit method is a separate module behind one switch (`network.scmva(method=...)`).
 - Unsupported network elements stop the calculation with a clear error rather than being silently ignored.
 - The report's browser code reproduces the Python formulas exactly; its results are checked against the Python results (T11).
+- The dashboard contains no calculation: it is built from the report's HTML and runs the report's script unchanged, so the two cannot disagree (T12).
 
 ---
 
@@ -272,8 +275,10 @@ Every case must be **independently verified by the author (Shai)** before its te
 | T9 | Condenser sizing | IEEE bus 12, 1500 MW, target 3, X″d + Xt = 0.30 | (4500 − 2832.43) × 0.30 = **500.27 MVA** | ☑ |
 | T10 | Largest plant | T3b POI, weak threshold 3 | 485.86 / 3 = **161.95 MW** | ☑ |
 | T11 | Report recalculation | IEEE 39-bus scan report, inputs changed in the browser | Matches Python results (e.g., 800 MW: lowest SCR 3.54, 0 flagged) | ☐ |
+| T12 | Dashboard equals report | IEEE 39-bus scan with groups, N-1, EMT triage and cost; inputs changed in the browser in both files | Every card, table row, group panel, cost row and map node identical at each setting | ☐ |
+| T13 | Voltage-base conversion (V6) | 220 kV / 33 kV buses; source 1000 MVA, X″d 0.20, rated 230 kV; transformer 100 MVA, 230/34.5 kV, vk 12 %, vkr 0.4 % | 4,574.67 MVA at bus 1; 653.57 MVA at bus 2 | ☐ |
 
-T11 is checked by running the report's code in a simulated browser during development; it is not part of the automated test suite.
+T11 and T12 are checked by running the report's code in a simulated browser during development; they are not part of the automated test suite (T12's structure, that nothing in the report is missing from the dashboard and the script is unchanged, is tested automatically).
 
 ---
 
@@ -312,6 +317,11 @@ T11 is checked by running the report's code in a simulated browser during develo
 | D24 | Nearby test (v0.4) | Pair interaction factor ≥ 0.5 (user-configurable), the same judgment value as `interactions`; not an industry standard |
 | D25 | Conditions (v0.4) | Intact, worst N-1 (lines, transformers, generators) and, when generators are named, minimum generation; group metrics intact only |
 | D26 | Unchanged outputs (v0.4) | New behavior only with `triage` or `scan --emt-triage`; every other output is identical to v0.3.1 (checked file by file) |
+| D27 | Voltage base (v0.5) | Transformer and generator impedances are converted to the bus nominal voltage, the transformer on its low-voltage side (the convention pandapower uses). Before v0.5 the rated voltage was taken as equal to the bus voltage, which overstated or understated SCMVA when they differed |
+| D28 | Nominal ratio (v0.5) | Taps and off-nominal turns ratios stay unmodeled (flat-start convention); the report and `check` state how many transformers this affects and that the effect can reach several percent at adjacent buses |
+| D29 | Negative reactance (v0.5) | A line with negative series reactance is still listed as possible series compensation, but answering `series_compensation = no` in the POI information file removes that trigger (reduced models contain negative-reactance equivalent branches) |
+| D30 | Dashboard (v0.5) | A separate output (`scan --dashboard`); `--report` is unchanged. Layout only: built from the report and running its script. With the classical method it turns on `--n1` and `--emt-triage` so every view is present |
+| D31 | Report data precision (v0.5) | Values embedded in the report for live recalculation carry full double precision (17 significant digits), so the browser and Python round identically |
 
 ---
 

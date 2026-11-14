@@ -6,8 +6,8 @@ authors:
   - family-names: Ibrahim
     given-names: Shaibu
     orcid: "https://orcid.org/0009-0009-5942-9702"
-version: 0.4.0
-date-released: 2026-11-07
+version: 0.5.0
+date-released: 2026-11-14
 doi: 10.5281/zenodo.23130832
 url: "https://github.com/ishaibu/scr-screen"
 repository-code: "https://github.com/ishaibu/scr-screen"

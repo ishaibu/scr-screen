@@ -8,7 +8,14 @@ Method (common U.S. planning practice for SCR screening):
        Inverter-based resources (sgen, storage) are not sources, so their
        contribution is excluded automatically.
     3. Lines and transformers are series impedances. Loads, shunts and line
-       charging are ignored; transformers are at nominal ratio.
+       charging are ignored; transformers are at nominal ratio (taps and
+       off-nominal turns ratios are not modeled).
+       Per-unit conversion: a transformer's short-circuit impedance is given on
+       its own rating and rated voltage. It is referred to the low-voltage side
+       and converted to the bus voltage base (the convention pandapower uses):
+           z_pu = z_k × (S_base / S_n) × (V_n,LV winding / V_n,LV bus)²
+       and a generator's X''d likewise: x_pu = X''d × (S_base / S_n) × (V_n,gen / V_n,bus)².
+       When the rated voltages equal the bus nominal voltages the factors are 1.
     4. Build the bus admittance matrix Y, then for each bus i:
          Z_th,i = [Y^-1]_ii   and   SCMVA_i = S_base / |Z_th,i|   (V = 1.0 pu)
 
@@ -95,6 +102,7 @@ def build_zbus(net) -> ZBus:
     ]
 
     open_lines, open_trafos = _open_switches(net)
+    n_base = n_base_gen = n_ratio = 0
     branches: list[tuple[str, int, int, complex]] = []
     sources: list[tuple[str, int, complex]] = []
 
@@ -125,7 +133,10 @@ def build_zbus(net) -> ZBus:
             raise InputError(f"Transformer {idx} has invalid vk_percent/vkr_percent.")
         xk = math.sqrt(zk**2 - rk**2)
         par = float(tr.get("parallel", 1) or 1)
-        z_pu = complex(rk, xk) * (S_BASE_MVA / tr["sn_mva"]) / par
+        k_v = _voltage_factor(tr.get("vn_lv_kv"), net.bus.at[lv, "vn_kv"])
+        n_base += abs(k_v - 1.0) > BASE_TOL
+        n_ratio += _off_nominal(tr, net.bus.at[hv, "vn_kv"], net.bus.at[lv, "vn_kv"])
+        z_pu = complex(rk, xk) * (S_BASE_MVA / tr["sn_mva"]) * k_v / par
         adm = _add_branch(y, pos[hv], pos[lv], z_pu, f"transformer {idx}")
         branches.append((f"transformer {idx}", hv, lv, adm / par))  # one unit
 
@@ -161,7 +172,9 @@ def build_zbus(net) -> ZBus:
         vn = float(net.bus.at[b, "vn_kv"])
         rdss_ohm = g.get("rdss_ohm", 0.0)
         r_pu = 0.0 if not _is_nonneg(rdss_ohm) else rdss_ohm * S_BASE_MVA / vn**2
-        x_pu = xdss * S_BASE_MVA / sn
+        k_v = _voltage_factor(g.get("vn_kv"), vn)
+        n_base_gen += abs(k_v - 1.0) > BASE_TOL
+        x_pu = xdss * S_BASE_MVA / sn * k_v
         sources.append((f"generator {idx}", b, _add_shunt(y, pos[b], complex(r_pu, x_pu), f"generator {idx}")))
         n_sources += 1
 
@@ -176,6 +189,15 @@ def build_zbus(net) -> ZBus:
             "probably isolated from every source."
         ) from None
 
+    if n_base or n_base_gen:
+        what = " and ".join(t for t in (f"{n_base} transformer(s)" if n_base else "",
+                                        f"{n_base_gen} generator(s)" if n_base_gen else "") if t)
+        notes.append(f"Voltage base: {what} have a rated voltage different from the bus nominal voltage; "
+                     "their impedances were converted to the bus voltage base (z × (V rated ÷ V bus)²).")
+    if n_ratio:
+        notes.append(f"Nominal ratio: {n_ratio} transformer(s) have a tap position away from neutral or a "
+                     "rated turns ratio different from the bus voltage ratio; the classical method uses the "
+                     "nominal ratio, so these are not modeled. This is the usual flat-start assumption; it can change the short-circuit MVA by several percent at buses next to those transformers.")
     if isolated:
         notes.append(f"{len(isolated)} bus(es) have no path to any source and were "
                      "excluded: " + ", ".join(str(b) for b in isolated[:20])
@@ -274,6 +296,46 @@ def _check_supported(net):
                     f"The network contains in-service '{table}' elements, which "
                     "the classical method does not model."
                 )
+
+
+BASE_TOL = 1e-6    # relative difference below which rated and bus voltages count as equal
+RATIO_TOL = 1e-4
+
+
+def _voltage_factor(v_rated, v_bus) -> float:
+    """(V rated ÷ V bus)²: converts a per-unit impedance from the element's rated voltage to the bus base."""
+    if not _is_pos(v_rated) or not _is_pos(v_bus):
+        return 1.0
+    return (float(v_rated) / float(v_bus)) ** 2
+
+
+def _off_nominal(tr, vn_hv_bus, vn_lv_bus) -> bool:
+    """True if the transformer's ratio differs from the bus voltage ratio (rated ratio or tap position)."""
+    hv, lv = tr.get("vn_hv_kv"), tr.get("vn_lv_kv")
+    if _is_pos(hv) and _is_pos(lv) and _is_pos(vn_hv_bus) and _is_pos(vn_lv_bus):
+        if abs((float(hv) / float(lv)) / (float(vn_hv_bus) / float(vn_lv_bus)) - 1.0) > RATIO_TOL:
+            return True
+    pos, neutral, step = tr.get("tap_pos"), tr.get("tap_neutral"), tr.get("tap_step_percent")
+    try:
+        if all(v is not None and math.isfinite(float(v)) for v in (pos, neutral, step)):
+            return abs((float(pos) - float(neutral)) * float(step)) > RATIO_TOL * 100
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
+def off_nominal_transformers(net) -> tuple[int, int]:
+    """(transformers whose rated LV voltage differs from the bus, transformers with an off-nominal ratio)."""
+    n_base = n_ratio = 0
+    for _, tr in net.trafo.iterrows():
+        if not tr["in_service"]:
+            continue
+        hv, lv = int(tr["hv_bus"]), int(tr["lv_bus"])
+        if hv not in net.bus.index or lv not in net.bus.index:
+            continue
+        n_base += abs(_voltage_factor(tr.get("vn_lv_kv"), net.bus.at[lv, "vn_kv"]) - 1.0) > BASE_TOL
+        n_ratio += _off_nominal(tr, net.bus.at[hv, "vn_kv"], net.bus.at[lv, "vn_kv"])
+    return int(n_base), int(n_ratio)
 
 
 def _is_pos(v) -> bool:

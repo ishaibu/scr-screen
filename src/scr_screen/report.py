@@ -161,6 +161,7 @@ function q(s,r){return (r||document).querySelector(s);}
 function qa(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function f(v,d){return v.toFixed(d);}
 function num(v){return v.toLocaleString('en-US',{maximumFractionDigits:1});}
+function num1(v){return v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});}
 function g(v){return String(+(+v).toPrecision(6));}
 function pill(el,c){if(el){el.className='pill '+c;el.textContent=NAME[c];}}
 function money(v){if(v===null) return '\u2014';var a=Math.abs(v);
@@ -304,10 +305,10 @@ function costUpdate(resort){
       below.slice(0,8).map(function(d){return d.bus;}).join(', ')+(below.length>8?' \u2026':'')+'. For each, use a plant no larger than its \u201cmax at target\u201d size, or add the condenser shown.'
       :'<b>All costed buses meet your target SCR of '+g(S.target)+'.</b> No condenser needed.';}
   data.forEach(function(d){var t=d.t;
-    q('.k-scr',t).textContent=f(d.scr,2); q('.k-need',t).textContent=num(d.need); q('.k-cmva',t).textContent=num(d.cm);
+    q('.k-scr',t).textContent=f(d.scr,2); q('.k-need',t).textContent=num1(d.need); q('.k-cmva',t).textContent=num1(d.cm);
     q('.k-after',t).textContent=f(d.cm>0?S.target:d.scr,2);
     q('.k-tc',t).innerHTML=d.meets?"<span class='meet'>\u2713 Meets</span>":"<span class='below'>Below target</span><br>Max at target: <b>"+
-      Math.round(d.maxT).toLocaleString('en-US')+" "+U+"</b><br>or condenser: <b>"+num(d.cm)+" MVA</b>";
+      Math.round(d.maxT).toLocaleString('en-US')+" "+U+"</b><br>or condenser: <b>"+num1(d.cm)+" MVA</b>";
     q('.k-cc',t).textContent=money(d.cc); var gcell=q('.k-gc',t); if(gcell) gcell.textContent=money(d.gc);
     q('.k-tot',t).innerHTML=money(d.tot)+(d.ok?'':' <span class="inc">(incomplete)</span>');
     var w=function(v){return (v&&mx?v/mx*100:0)+'%';};
@@ -409,7 +410,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     unit = escape(str(interactive.get("unit", "MW"))) if live else basis  # unit of the slider's plant size
     TV = f"<span class='th-vw'>{vw:g}</span>" if live else f"{vw:g}"  # thresholds that update live
     TW = f"<span class='th-wk'>{wk:g}</span>" if live else f"{wk:g}"
-    dscm = (lambda p: f" data-scmva='{p.scmva:.10g}'") if live else (lambda p: "")
+    dscm = (lambda p: f" data-scmva='{p.scmva:.17g}'") if live else (lambda p: "")
 
     parts = [
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>",
@@ -606,11 +607,11 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
         cls, label = FLAG_STYLE[p.flag]
         attrs = dscm(p) + (f" data-pid='{escape(p.plant_id)}'" if live else "")
         if live and p.plant_id in ext.get("ifsum", {}) and p.scrif is not None:
-            attrs += f" data-ifsum='{ext['ifsum'][p.plant_id]:.10g}'"
+            attrs += f" data-ifsum='{ext['ifsum'][p.plant_id]:.17g}'"
         if live and p.plant_id in ext.get("n1", {}):
-            attrs += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
+            attrs += f" data-n1='{ext['n1'][p.plant_id]:.17g}'"
         if live and p.plant_id in ext.get("qc", {}):
-            attrs += f" data-qc='{ext['qc'][p.plant_id]:.10g}'"
+            attrs += f" data-qc='{ext['qc'][p.plant_id]:.17g}'"
         if p.plant_id in tri:
             attrs += f" data-tri='{escape(json.dumps(tri[p.plant_id]))}'"
         cells = ""
@@ -640,7 +641,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
             cls, label = FLAG_STYLE[g.flag]
             gattr = f" class='gres' data-g='{escape(g.group)}'" if live else ""
             if live and g.group in ext.get("cscmva", {}):
-                gattr += f" data-cs='{ext['cscmva'][g.group]:.10g}'"
+                gattr += f" data-cs='{ext['cscmva'][g.group]:.17g}'"
             cs_cell = ""
             if has_cscr:
                 cs_cell = "<td class='n c-cscr'>" + (_val_pill(g.cscr, vw, wk, 3) if g.cscr is not None else "") + "</td>"
@@ -708,8 +709,8 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
                         f"style='left:{th / scale * 100:.2f}%'>"
                         f"{f'<span>{th:g}</span>' if i == 0 else ''}</div>" for kind, th in (("vw", vw), ("wk", wk)))
         out.append(
-            f"<div class='row{' diff' if ca != cb else ''}' data-scmva='{p.scmva:.10g}' "
-            f"data-scmva2='{compare[p.plant_id]:.10g}'>"
+            f"<div class='row{' diff' if ca != cb else ''}' data-scmva='{p.scmva:.17g}' "
+            f"data-scmva2='{compare[p.plant_id]:.17g}'>"
             f"<div class='name' title='{escape(p.plant_id)}'>{escape(p.plant_id)}</div>"
             f"<div class='track'>{ticks}<div class='seg' style='left:{min(pa, pb):.2f}%;width:{abs(pb - pa):.2f}%'></div>"
             f"<div class='dot a {ca}' style='left:{pa:.2f}%' title='{a_lab}'></div>"
@@ -755,8 +756,8 @@ def _groups_section(result, live, ext=None) -> str:
             value = p.scmva / rating
             pc, pl = FLAG_STYLE[_flag_word(value, *_th(result))]
             fixed = sized and abs(rating - p.rating) > 1e-9
-            attr = (f" data-scmva='{p.scmva:.10g}' data-pid='{escape(pid)}'"
-                    + (f" data-p='{rating:.10g}'" if fixed else "")) if live else ""
+            attr = (f" data-scmva='{p.scmva:.17g}' data-pid='{escape(pid)}'"
+                    + (f" data-p='{rating:.17g}'" if fixed else "")) if live else ""
             size_txt = f" ({rating:,.0f} {escape(result.basis)})" if fixed else ""
             out.append(f"<div class='gline mem'{attr}><span>{escape(pid)} alone{size_txt}</span>"
                        f"<span><span class='val'>{value:.2f}</span>"
@@ -765,7 +766,7 @@ def _groups_section(result, live, ext=None) -> str:
                    f"<span><span class='val'>{g.wscr:.2f}</span>"
                    f"<span class='pill {cls}'>{label}</span></span></div>")
         if g.cscr is not None:
-            a = (f" data-cs='{ext['cscmva'][g.group]:.10g}' data-n='{len(g.plant_ids)}'"
+            a = (f" data-cs='{ext['cscmva'][g.group]:.17g}' data-n='{len(g.plant_ids)}'"
                  if live and g.group in ext.get("cscmva", {}) else "")
             out.append(f"<div class='gline sub cscr'{a}><span>Together, POIs tied (CSCR)</span>"
                        f"<span>{_val_pill(g.cscr, *_th(result))}</span></div>")
@@ -774,7 +775,7 @@ def _groups_section(result, live, ext=None) -> str:
             scrif_v = g.member_scrif[k] if g.member_scrif is not None else p.scrif
             if scrif_v is None:
                 continue
-            a = (f" data-s='{p.scmva:.10g}' data-ifsum='{ext['ifsum'][pid]:.10g}' data-pid='{escape(pid)}'"
+            a = (f" data-s='{p.scmva:.17g}' data-ifsum='{ext['ifsum'][pid]:.17g}' data-pid='{escape(pid)}'"
                  f" data-if='{escape(json.dumps(ext['ifm'][pid]))}'"
                  if live and pid in ext.get("ifsum", {}) and pid in ext.get("ifm", {}) else "")
             out.append(f"<div class='gline sub scrif'{a}><span>{escape(pid)} with interaction (SCRIF)</span>"
@@ -824,7 +825,7 @@ def _n1_section(result, live, vw, wk, top=12) -> str:
            "<div class='tablewrap'><table><thead><tr><th>Bus</th><th class='n'>Intact SCR</th>"
            "<th class='n'>N-1 SCR</th><th>Outage that causes it</th></tr></thead><tbody>"]
     for p in rows:
-        a = (f" class='n1row' data-scmva='{p.scmva:.10g}' data-n1='{p.n1_scr * p.rating:.10g}'" if live else "")
+        a = (f" class='n1row' data-scmva='{p.scmva:.17g}' data-n1='{p.n1_scr * p.rating:.17g}'" if live else "")
         out.append(f"<tr{a}><td>{escape(p.plant_id)}</td><td class='n k-int'>{p.scr:.3f}</td>"
                    f"<td class='n'>{_val_pill(p.n1_scr, vw, wk, 3)}</td><td>{escape(p.n1_outage or '')}</td></tr>")
     out.append("</tbody></table></div>")
@@ -850,11 +851,11 @@ def _tri_section(result, ext) -> str:
            "<div class='tablewrap'><table><thead><tr><th>Bus</th><th>Priority</th><th>Why</th>"
            "<th class='n' style='white-space:nowrap'>Not checked</th></tr></thead><tbody>"]
     for p in rows:
-        a = f" data-scmva='{p.scmva:.10g}' data-pid='{escape(p.plant_id)}'"
+        a = f" data-scmva='{p.scmva:.17g}' data-pid='{escape(p.plant_id)}'"
         if p.plant_id in ext.get("n1", {}):
-            a += f" data-n1='{ext['n1'][p.plant_id]:.10g}'"
+            a += f" data-n1='{ext['n1'][p.plant_id]:.17g}'"
         if p.plant_id in ext.get("qc", {}):
-            a += f" data-qc='{ext['qc'][p.plant_id]:.10g}'"
+            a += f" data-qc='{ext['qc'][p.plant_id]:.17g}'"
         a += f" data-tri='{escape(json.dumps(tri[p.plant_id]))}'"
         t0 = tri[p.plant_id]
         why = " · ".join(t0["w"]) if t0["w"] else "No screening trigger found"
@@ -960,7 +961,7 @@ def _cost_section(cost, live, unit="MW") -> str:
             dist_cell = "—" if r.gen_tie_mi is None else f"{r.gen_tie_mi:g}"
             poi_cell = _money(r.poi_cost)
         out.append(
-            f"<tr data-scmva='{r.scmva:.10g}' data-dist='{dist}' data-poi='{poi}' "
+            f"<tr data-scmva='{r.scmva:.17g}' data-dist='{dist}' data-poi='{poi}' "
             f"data-dist0='{dist}' data-poi0='{poi}'>"
             f"<td class='n k-rank'>{i}</td><td>{bus}</td>"
             f"<td class='n k-scr'>{r.scr:.2f}</td><td class='k-tc'>{_target_check(r, unit)}</td>"

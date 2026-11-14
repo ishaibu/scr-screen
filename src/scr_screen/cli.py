@@ -114,6 +114,8 @@ def _cmd_scan(args) -> int:
     if not args.plant_mw > 0:
         raise InputError(f"Plant size (--plant-mw) must be greater than zero, got {args.plant_mw:g}.")
     basis = args.basis.upper()
+    if args.dashboard and args.method == "classical":
+        args.emt_triage = True  # the dashboard shows every view the classical method offers
     if args.emt_triage:
         if args.method != "classical":
             raise InputError("EMT triage (--emt-triage) uses the classical method. Remove --method iec60909.")
@@ -195,7 +197,7 @@ def _cmd_scan(args) -> int:
               if use_names else
               "Bus labels are model indices (each bus's position in the network file, counting from 0); "
               "bus names were not unique.")]
-    notes += [n for n in calc_notes if "excluded" in n]
+    notes += [n for n in calc_notes if "excluded" in n or n.startswith(("Voltage base:", "Nominal ratio:"))]
     if gen_out_note:
         notes.append(gen_out_note)
     if mva_note:
@@ -206,6 +208,7 @@ def _cmd_scan(args) -> int:
                      "use --basis MVA with --plant-mva.")
     result, extra, strength_notes = _network_strength(args, net, rows, ids, result, rating, sizes)
     zb = extra.pop("_zb", None)
+    n1z = extra.pop("_n1z", {})
     notes += strength_notes
     tri = None
     if args.emt_triage:
@@ -218,7 +221,8 @@ def _cmd_scan(args) -> int:
     cost = _cost_screening(args, result, thresholds)
 
     svg, map_note, interactive = None, None, None
-    if args.report:
+    dash = None
+    if args.report or args.dashboard:
         svg, map_note = render_network_svg(net, {r.bus: (r.scr, r.flag) for r in rows},
                                             scmva={r.bus: r.scmva for r in rows},
                                             n1={r.bus: extra["n1"][ids[r.bus]] for r in rows
@@ -236,13 +240,30 @@ def _cmd_scan(args) -> int:
         interactive = {"plant_mw": rating, "unit": basis, "compare": compare,
                        "primary_label": _short_label(args.method),
                        "compare_label": _short_label(other), **extra}
+    if args.dashboard:
+        from .dashboard import thevenin_data
+
+        dash = {"buses": {}, "version": result.tool_version}
+        for r in rows:
+            kv = float(net.bus.at[r.bus, "vn_kv"])
+            if not kv > 0:
+                continue
+            if zb is not None and r.bus in zb.pos:  # Thevenin data (classical method)
+                k = zb.pos[r.bus]
+                dash["buses"][ids[r.bus]] = thevenin_data(kv, complex(zb.z[k, k]), n1z.get(r.bus))
+            else:
+                dash["buses"][ids[r.bus]] = {"kv": float(f"{kv:g}")}
+        if zb is not None:
+            if basis == "MW":
+                name = f'"{path.name}"' if " " in path.name else path.name
+                dash["cmd"] = f"scr-screen triage {name} --buses {{bus}} --plant-mw {{size}} --report bus.html"
     _print_summary(result)
     if tri:
         _print_scan_triage(tri)
     if cost:
         _print_costs(cost["rows"], unit=basis)
     _write_outputs(result, args, notes=notes, network_svg=svg, network_note=map_note,
-                   interactive=interactive, cost=cost, triage=tri)
+                   interactive=interactive, cost=cost, triage=tri, dashboard=dash)
     if cost and args.cost_out:
         from .cost import write_cost_csv
 
@@ -308,7 +329,8 @@ def _scan_triage(args, net, zb, rows, ids, result, devices, thresholds):
              "conditions are the intact network and the worst single outage.",
              f"EMT triage, nearby: an existing IBR or device is nearby when max(IF_ij, IF_ji) with the bus is at least "
              f"{args.ibr_threshold:g} (--ibr-threshold; SCR-Screen's default judgment value). Series compensation is "
-             "found as lines with negative series reactance, FACTS as svc/ssc/tcsc and HVdc as vsc/dcline elements."]
+             "found as lines with negative series reactance, FACTS as svc/ssc/tcsc and HVdc as vsc/dcline elements."
+             " A negative reactance can also be an equivalent branch of a reduced model; answering series_compensation = no in the POI information file tells the triage it is not a series capacitor."]
     if not args.poi_info:
         notes.append("EMT triage: no POI information file (--poi-info) was given, so the situations a network model "
                      "cannot show (e.g. pre-existing oscillation, RAS, system events) are not checked. For a full data sheet per "
@@ -464,8 +486,10 @@ def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
                      "definition ties the plants' medium-voltage buses, which are not in a transmission model"
                      + (", and divides by the plants' nominal MVA ratings (use --basis MVA to match)."
                         if unit == "MW" else ", and divides by the plants' nominal MVA ratings, as here."))
+    n1z: dict = {}
     if zb is not None and args.n1:
         n1 = n1_worst(zb, [r.bus for r in rows], label=lambda b: ids.get(b, f"Bus {b}"))
+        n1z = dict(n1.zth)
         for r in rows:
             pid = ids[r.bus]
             plant_upd.setdefault(pid, {}).update(n1_scr=n1.scmva[r.bus] / p_mw, n1_outage=n1.outage[r.bus])
@@ -488,6 +512,7 @@ def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
     result.plants = [replace(p, **plant_upd[p.plant_id]) if p.plant_id in plant_upd else p for p in result.plants]
     result.groups = [replace(g, **group_upd[g.group]) if g.group in group_upd else g for g in result.groups]
     extra["_zb"] = zb  # for EMT triage; removed by the caller
+    extra["_n1z"] = n1z  # worst-outage Thevenin impedance per bus, for the dashboard; removed by the caller
     return result, extra, notes
 
 
@@ -667,7 +692,8 @@ def _cmd_triage(args) -> int:
              "screened as an sgen, it appears as a nearby IBR at its own bus; ignore that entry.",
              "Series compensation is found as lines with negative series reactance; FACTS as svc, ssc and tcsc "
              "elements; HVdc as vsc and dcline elements. Devices modeled another way (e.g. as an equivalent "
-             "impedance) are not found: answer them in the POI information file."] + notes
+             "impedance) are not found: answer them in the POI information file."
+             " A negative reactance can also be an equivalent branch of a reduced model; answering series_compensation = no in the POI information file tells the triage it is not a series capacitor."] + notes
     if min_note:
         notes.append(min_note.replace("for this scan (--gen-out)", "in the minimum-generation case only (--gen-out)"))
     if mva_note:
@@ -894,7 +920,20 @@ def _thresholds(args) -> Thresholds:
 def _write_outputs(result: ScreeningResult, args, notes: list[str],
                    network_svg: str | None = None, network_note: str | None = None,
                    interactive: dict | None = None, cost: dict | None = None,
-                   triage: dict | None = None) -> None:
+                   triage: dict | None = None, dashboard: dict | None = None) -> None:
+    if getattr(args, "dashboard", None):
+        from .dashboard import write_dashboard
+        from .report import render_html
+
+        html = render_html(result, title=args.title, notes=notes, network_svg=network_svg,
+                           network_note=network_note, interactive=interactive, cost=cost)
+        path = write_dashboard(html, args.dashboard, dashboard)
+        print(f"Dashboard written: {path}")
+        if args.open and not args.report:
+            import webbrowser
+
+            webbrowser.open(Path(path).resolve().as_uri())
+            print("Opened the dashboard in your browser.")
     if args.report:
         path = write_html_report(result, args.report, title=args.title, notes=notes,
                                  network_svg=network_svg, network_note=network_note,
@@ -1028,6 +1067,9 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--groups", metavar="CSV",
                    help="screen buses together with WSCR: CSV with columns bus, group, and optional "
                         "mw, mva for a member's own size (e.g. an existing plant, or a STATCOM with mw 0)")
+    s.add_argument("--dashboard", metavar="HTML",
+                   help="write the scan as a dashboard: the report's content in views behind a sidebar "
+                        "(with the classical method this adds --n1 and --emt-triage)")
     s.add_argument("--emt-triage", action="store_true",
                    help="add an EMT study priority for every bus (NERC 2024 situations; implies --n1)")
     s.add_argument("--ibr-threshold", type=float, default=0.5, metavar="X",

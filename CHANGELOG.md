@@ -3,6 +3,25 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-14
+
+A dashboard for network scans, and accuracy fixes found in a review of the calculations.
+
+### Added
+- **`scan --dashboard FILE.html`**: the scan as a one-screen dashboard. A sidebar of views (Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions) with counts of what needs attention; plant size and thresholds stay in place; the Overview shows the network map beside the weakest locations and the details of the selected bus: SCR intact and under the worst single outage, short-circuit MVA, fault current, largest size before a weak flag, Thévenin impedance (R + jX in ohms, X/R) intact and N-1, the worst outage and the reason for its EMT priority. Rankings can be searched, filtered to flagged buses and sorted; the map can be colored by SCR, N-1 SCR or EMT study priority; Print / PDF prints every view; Download CSV saves the results as shown. One self-contained HTML file. The dashboard is built from the report and runs the report's own script, so both show the same numbers. With the classical method, `--dashboard` turns on `--n1` and `--emt-triage`.
+- Verification V6: voltage-base conversion of a transformer and a generator, by hand.
+- `scr-screen check` and the report notes state how many transformers have a rated voltage different from the bus voltage (converted) and how many have a tap position or turns ratio away from nominal (not modeled).
+
+### Fixed
+- **Voltage base (classical method).** A transformer's short-circuit impedance and a generator's X″d are now converted from the equipment's rated voltage to the bus nominal voltage: z × (V rated ÷ V bus)², the transformer on its low-voltage side. Before, the rated voltage was assumed equal to the bus voltage. Results change **only** for networks where a transformer's rated low-voltage winding voltage or a generator's rated voltage differs from its bus's nominal voltage; there the short-circuit MVA was overstated when the equipment is rated above the bus voltage (and understated when below). The bundled IEEE 39-bus example and networks imported from MATPOWER files are not affected.
+- **EMT triage: negative reactance.** A line with negative series reactance near a POI is reported as possible series compensation. Reduced network models contain negative-reactance equivalent branches that are not capacitors, so answering `series_compensation = no` for the POI in the `--poi-info` file now removes that trigger, and the trigger text says so.
+- **Report: live values.** Numbers embedded for live recalculation now carry full precision. Before, a live value could differ from the Python result in the last displayed digit (seen once: N-1 SCR 5.937 vs 5.938), and the cost table showed "459" where the static table showed "459.0".
+
+### Changed
+- The classical method's stated assumption is now precise: transformers are modeled at their **nominal ratio**; tap positions and off-nominal turns ratios are not modeled. The effect is usually small but can reach several percent at buses next to such transformers. Scan reports for the IEEE 39-bus example gain one note line (11 transformers); its numbers are unchanged.
+- The public demo page is now the dashboard; the one-page report of the same scan is at `demo/report/`.
+- Otherwise, every existing command and option gives the same numbers as v0.4.0.
+
 ## [0.4.0] - 2026-11-07
 
 EMT study triage, based on the situations listed in NERC's Reliability Guideline *Recommended Practices for Performing EMT System Studies for Inverter-Based Resources* (December 2024, Chapter 1).

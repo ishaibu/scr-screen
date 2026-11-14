@@ -192,6 +192,11 @@ class PoiInfo:
     oem_min_scr: float | None
 
 
+NEGATIVE_X = "negative series reactance"
+NEGATIVE_X_HINT = ("; a negative reactance can also be an equivalent branch of a reduced model: if it is not a "
+                   "series capacitor, answer series_compensation = no in the POI information file")
+
+
 # --- Model checks ---------------------------------------------------------------
 
 def detect_devices(net) -> list[Device]:
@@ -199,7 +204,7 @@ def detect_devices(net) -> list[Device]:
     out: list[Device] = []
     for idx, ln in net.line.iterrows():
         if ln["in_service"] and float(ln["x_ohm_per_km"]) < 0:
-            out.append(Device("series compensation", f"line {idx} (negative series reactance)",
+            out.append(Device("series compensation", f"line {idx} ({NEGATIVE_X})",
                               _name(ln.get("name"), f"line {idx}"), (int(ln["from_bus"]), int(ln["to_bus"]))))
     for table, (kind, what) in _TABLE_DEVICE.items():
         if table not in net or len(net[table]) == 0:
@@ -359,10 +364,17 @@ def fixed_triggers(ibrs: list[Nearby], devices: list[Nearby], pinfo: PoiInfo | N
         out.append(Trigger(2, "Other IBRs nearby", "existing IBR(s) electrically close: "
                            + "; ".join(f"{n.name} at {n.where} (interaction {n.interaction:.2f})" for n in near_ibr),
                            "model"))
+    # A negative series reactance is a series capacitor, or an equivalent branch of a reduced model.
+    # The user's answer series_compensation = no says it is not a capacitor, so it does not trigger.
+    not_capacitor = pinfo is not None and pinfo.answers.get("series_compensation") == "no"
     for d in devices:
         if d.near:
+            negative_x = d.kind == "series compensation" and NEGATIVE_X in d.name
+            if negative_x and not_capacitor:
+                continue
             out.append(Trigger(DEVICE_LEVEL[d.kind], _situation(d.kind),
-                               f"{d.name} ({d.kind}) at {d.where}, interaction {d.interaction:.2f}", "model"))
+                               f"{d.name} ({d.kind}) at {d.where}, interaction {d.interaction:.2f}"
+                               + (NEGATIVE_X_HINT if negative_x else ""), "model"))
     if pinfo:
         for fld, (text, lvl) in USER_FIELDS.items():
             if pinfo.answers.get(fld) == "yes":

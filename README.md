@@ -57,13 +57,14 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
 | Cost screening | Ranks candidate buses by screening-level cost: synchronous condenser to fix weak grid, gen-tie line, POI substation (all costs are your inputs) |
 | Your own network | Reads pandapower JSON, Excel (.xlsx), and MATPOWER (.m/.mat); `check` lists anything missing before you scan |
-| Outputs | Self-contained HTML report (works offline), CSV, JSON |
+| Dashboard | `scan --dashboard` writes the scan as a one-screen dashboard: a sidebar of views (overview, map, rankings, charts, groups, N-1, EMT triage, cost, method comparison, assumptions), the weakest locations beside the map, and the details of any bus you click, including its Thévenin impedance and fault current. Same numbers and live inputs as the report; one HTML file that works offline |
+| Outputs | Self-contained HTML report and dashboard (work offline), CSV, JSON |
 | Interfaces | Command line (`scr-screen`) and Python API |
 
 ## Try it without installing
 
 - **[SCR-Screen Lite](https://ishaibu.github.io/scr-screen/lite/)**: browser calculator. Type each plant's short-circuit MVA and MW to get SCR, flags, WSCR, the largest plant before a weak flag, and condenser cost. Runs entirely in your browser.
-- **[Interactive demo report](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs). Drag the plant-size slider and change the inputs; two groups of nearby buses show WSCR, CSCR and SCRIF, the heat map shows weak areas, the N-1 view shows each bus's worst single outage, and the EMT study triage gives each bus a priority.
+- **[Interactive demo](https://ishaibu.github.io/scr-screen/demo/)**: a full IEEE 39-bus scan (assumed data, illustrative costs) as a dashboard. Drag the plant-size slider and change the inputs; click any bus for its details; two groups of nearby buses show WSCR, CSCR and SCRIF, the heat map shows weak areas, the N-1 view shows each bus's worst single outage, and the EMT study triage gives each bus a priority. The same scan as a one-page report: [demo report](https://ishaibu.github.io/scr-screen/demo/report/).
 
 ## Installation
 
@@ -91,7 +92,10 @@ pip install -e ".[dev]"
 scr-screen example                      # copies example files into ./scr-screen-example
 cd scr-screen-example
 scr-screen scan ieee39_assumed.json --plant-mw 1500 --report scan.html --open
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --dashboard dashboard.html --open
 ```
+
+The first command writes the one-page report; the second writes the same scan as a [dashboard](#dashboard).
 
 **Direct mode:** you already have short-circuit MVA values (from any study tool).
 
@@ -158,7 +162,29 @@ bus,group,mw,mva
 
 **Minimum-generation case:** `--gen-out 30,32` takes the generators at those buses out of service for the whole scan. The weakest short-circuit levels usually occur with fewer units online.
 
-Run `scr-screen --help`, `scr-screen run --help`, `scr-screen scan --help` or `scr-screen triage --help` for all options (`--basis`, `--plant-mva`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--gen-out`, `--no-heatmap`, `--emt-triage`, `--ibr-threshold`, `--poi-info`).
+Run `scr-screen --help`, `scr-screen run --help`, `scr-screen scan --help` or `scr-screen triage --help` for all options (`--basis`, `--plant-mva`, `--weak`, `--very-weak`, `--title`, `--open`, `--no-compare`, `--groups`, `--n1`, `--gen-out`, `--no-heatmap`, `--emt-triage`, `--dashboard`, `--ibr-threshold`, `--poi-info`).
+
+## Dashboard
+
+`scan --dashboard FILE.html` writes the scan as a dashboard instead of (or as well as) the one-page report:
+
+```bash
+scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_example.csv --dashboard dashboard.html --open
+```
+
+<p align="center">
+  <a href="https://ishaibu.github.io/scr-screen/demo/"><img src="https://raw.githubusercontent.com/ishaibu/scr-screen/main/docs/images/dashboard.png" width="760"
+  alt="SCR-Screen dashboard for the IEEE 39-bus example: a sidebar of views, the plant-size and threshold inputs, summary cards, the network map, the weakest locations and the details of the selected bus"></a>
+</p>
+
+- **Views in a sidebar**, each with a count of what needs attention: Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions. A view appears only when the scan has that content.
+- **Inputs that stay in place:** plant size and the weak and very-weak thresholds; the cost inputs are in the Cost screening view. Everything recalculates as in the report.
+- **Overview:** the network map beside the weakest locations (lowest SCR in any condition shown). Click a bus on the map, in the list or in the rankings for its details: SCR intact and under the worst single outage, short-circuit MVA, fault current, largest size before a weak flag, the Thévenin impedance (R + jX in ohms, X/R) intact and N-1, the worst outage, and why it has its EMT priority.
+- **Rankings:** search by bus or group, show flagged buses only, and sort by any column.
+- **Map colored by** SCR (intact), N-1 SCR, or EMT study priority.
+- **Print / PDF** prints every view in report order; **Download CSV** saves the results table as shown (current plant size and thresholds).
+
+The dashboard is the report's content rearranged: it uses the report's own calculation script, so the two always show the same numbers. With the classical method, `--dashboard` also turns on `--n1` and `--emt-triage` so that every view is available (results files written with `--out` then include the N-1 and EMT columns). `--report` is unchanged and can be used together with `--dashboard`. One HTML file, no internet access needed.
 
 ## EMT study triage
 
@@ -308,6 +334,8 @@ SCRIF, CSCR and N-1 use the classical method's network impedance matrix.
 
 In both methods, inverter-based resources do not contribute to SCMVA.
 
+**Per-unit conversion (classical method):** a transformer's short-circuit impedance and a generator's X″d are given on the equipment's own rating and rated voltage. They are converted to the 100 MVA base and to the bus nominal voltage: z = z_rated × (100 ÷ S_rated) × (V_rated ÷ V_bus)², with the transformer referred to its low-voltage side. When rated and bus voltages are equal, the last factor is 1. Transformers are modeled at their nominal ratio: tap positions and rated ratios that differ from the bus-voltage ratio are not modeled, and the report and `scr-screen check` say how many transformers this affects.
+
 **Default flag bands** (user-configurable): below 2 **very weak**; 2 to below 3 **weak**; 3 or above **no flag**. These follow HVDC planning practice (IEEE Std 1204-1997). There is no universal weak-grid threshold: NERC notes there is "no industry standard for what strong, weak, or very weak system strength means" (2017).
 
 **Thresholds used in practice** (examples from public documents; check the current criteria of your transmission provider):
@@ -329,7 +357,7 @@ Full details: [design specification](docs/design-spec.md).
 - SCR-based metrics assume **grid-following** inverters and do not replace the inverter manufacturer's minimum SCR.
 - WSCR assumes the plants in a group are fully interacting; SCRIF uses the network's interaction factors instead. Both are single-frequency, steady-state screens and do not capture control interactions; EMT studies with equipment-specific models remain essential below the screening thresholds (NERC, 2023).
 - The heat-map shading is a visual aid: strength is calculated only at buses, not between them.
-- The classical method ignores loads, shunts, and line charging, uses nominal transformer taps, and does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
+- The classical method ignores loads, shunts, and line charging, and uses the nominal transformer ratio: tap positions and off-nominal turns ratios are not modeled, which is the usual flat-start assumption and can change the short-circuit MVA by several percent at buses next to such transformers (the report notes how many there are). It does not yet model three-winding transformers or closed bus-bus switches. Unsupported elements stop the calculation with a clear error rather than being ignored.
 - Real transmission models are often restricted (e.g. CEII in the U.S.). SCR-Screen ships only public test data; users run it on their own models.
 - Cost screening is screening-level only and excludes network upgrades; all costs are user inputs.
 - The EMT triage lists situations that call for an EMT study; it does not decide whether one is required, and the transmission provider's requirements govern. It finds only what the model contains, so devices modeled as equivalent impedances, and situations a model cannot show, must be answered in the `--poi-info` file.
@@ -347,6 +375,7 @@ Every formula is covered by automated tests with hand-calculated expected values
 - **v0.3.0** (November 2026): network-aware screening: interaction factors and SCRIF, CSCR, ESCR, suggested groups (`interactions`), N-1 worst case (`--n1`), heat-map shading and N-1 view on the network map.
 - **v0.3.1** (November 2026): MVA basis in network scans (NERC's WSCR-MVA and MVA-based CSCR), STATCOMs and other 0 MW devices, per-member group sizes, generator outages in N-1, minimum-generation case (`--gen-out`), MW/MVA switch in SCR-Screen Lite.
 - **v0.4.0** (November 2026): EMT study triage: a system strength data sheet per POI (Thévenin R, X, X/R, intact, N-1 and minimum generation) and a priority based on the situations in NERC's 2024 EMT guideline (`triage`, `scan --emt-triage`).
+- **v0.5.0** (November 2026): dashboard (`scan --dashboard`): the scan as a one-screen application with views, bus details and Thévenin data; transformer and generator impedances converted to the bus voltage base; verification V6.
 
 **Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
 

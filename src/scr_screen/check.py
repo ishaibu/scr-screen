@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from .classical import UNSUPPORTED_TABLES, connected_to_source
+from .classical import UNSUPPORTED_TABLES, connected_to_source, off_nominal_transformers
 from .netmap import MAX_MAP_BUSES, bus_label
 
 ERROR, WARNING, INFO = "error", "warning", "info"
@@ -90,6 +90,17 @@ def check_network(net) -> CheckReport:
         if isolated:
             rep.add(WARNING, "both", f"{len(isolated)} bus(es) have no path to any source and will "
                     f"be skipped in scans: {_short([bus_label(net, b) for b in isolated])}.")
+
+    # --- Transformer voltages and ratios (classical method) --------------------
+    if "trafo" in net and len(net.trafo):
+        n_base, n_ratio = off_nominal_transformers(net)
+        if n_base:
+            rep.add(INFO, "classical", f"{n_base} transformer(s) have a rated low-voltage winding voltage different "
+                    "from the bus nominal voltage; their impedances are converted to the bus voltage base.")
+        if n_ratio:
+            rep.add(INFO, "classical", f"{n_ratio} transformer(s) have a tap position away from neutral or a rated "
+                    "turns ratio different from the bus voltage ratio; the classical method uses the nominal ratio, "
+                    "so these are not modeled. This is the usual flat-start assumption; it can change the short-circuit MVA by several percent at buses next to those transformers.")
 
     # --- Information ------------------------------------------------------------
     n_ibr = sum(int(net[t]["in_service"].sum()) for t in ("sgen", "storage") if t in net and len(net[t]))
