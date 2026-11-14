@@ -18,6 +18,7 @@ real project.
 | V3 | 2026-11-01 | IEEE 39-bus, group G1, interaction factors, SCRIF, CSCR | Hand calculation from impedance matrix | Match |
 | V4 | 2026-11-06 | IEEE 39-bus, MVA basis (WSCR-MVA, CSCR-MVA, SCRIF), STATCOM in a group, generator outage at bus 38 | Hand calculation | Match |
 | V5 | 2026-11-07 | IEEE 39-bus, bus 12 Thévenin data sheet (R, X, X/R, ohms, fault current), intact and worst N-1 | Hand calculation from impedance matrix | Match |
+| V6 | 2026-11-14 | Two-bus network, transformer and generator rated voltages different from the bus voltages (voltage-base conversion) | Hand calculation, per unit and ohms | Match  |
 
 
 ---
@@ -350,3 +351,70 @@ R′ differs slightly (0.0025192 vs 0.0025194); every reported value agrees to t
   for the minimum-generation case.
 - Whether an EMT study is required. The triage lists situations that call for one; the
   transmission provider's requirements govern.
+
+  ---
+
+## V6 — Voltage-base conversion (transformer and generator rated voltages)
+
+**Date:** 2026-11-14
+**Checked by:** Shaibu Ibrahim, P.E.
+**Tool version:** 0.5.0
+**Case:** a two-bus network built for this check (script below).
+
+| Element | Data |
+|---|---|
+| Bus 1, bus 2 | 220 kV and 33 kV nominal |
+| Source (generator) at bus 1 | 1,000 MVA, X″d = 0.20 pu, R = 0, rated 230 kV |
+| Transformer, bus 1 to bus 2 | 100 MVA, rated 230 / 34.5 kV, vk 12 %, vkr 0.4 % |
+
+The transformer's rated ratio equals the bus-voltage ratio (230 ÷ 34.5 = 220 ÷ 33), so
+only the voltage base differs.
+
+### Why this case
+A review of v0.4.0 found that the classical method took each transformer's and
+generator's rated voltage as equal to its bus's nominal voltage. Where they differ, the
+impedance was not converted to the bus voltage base and the short-circuit MVA was wrong
+(overstated when the equipment is rated above the bus voltage). v0.5.0 converts them.
+The IEEE 39-bus example has no such difference, so V1 to V5 are unaffected; this case
+has one, and is small enough to check completely by hand.
+
+### Method
+- Per unit: z = z_rated × (100 ÷ S_rated) × (V_rated ÷ V_bus)², with the transformer
+  referred to its low-voltage side. Factor: (34.5 ÷ 33)² = (230 ÷ 220)² = 1.0929752.
+- Independent route in ohms: refer the generator and the transformer to the 34.5 kV
+  winding, then SCMVA = 33² ÷ |Z| at the bus's nominal voltage (1.0 pu pre-fault).
+
+Script used to print the tool's values (run in the repository folder):
+
+    python -c "import warnings; warnings.simplefilter('ignore'); import pandapower as pp; from scr_screen.classical import build_zbus; net=pp.create_empty_network(sn_mva=100); b1=pp.create_bus(net,vn_kv=220.0); b2=pp.create_bus(net,vn_kv=33.0); pp.create_gen(net,b1,p_mw=0.0,vn_kv=230.0,sn_mva=1000.0,xdss_pu=0.20,rdss_ohm=0.0,cos_phi=0.85); pp.create_transformer_from_parameters(net,hv_bus=b1,lv_bus=b2,sn_mva=100.0,vn_hv_kv=230.0,vn_lv_kv=34.5,vk_percent=12.0,vkr_percent=0.4,pfe_kw=0.0,i0_percent=0.0); zb=build_zbus(net); print([(zb.z[zb.pos[b],zb.pos[b]], 100/abs(zb.z[zb.pos[b],zb.pos[b]])) for b in (b1,b2)])"
+
+### Results
+
+| Check | Hand calculation | SCR-Screen |
+|---|---|---|
+| Generator, bus voltage base | 0.20 × 100 ÷ 1,000 × 1.0929752 = **j0.0218595 pu** | j0.0218595 |
+| Bus 1 SCMVA | 100 ÷ 0.0218595 = **4,574.67 MVA** | 4,574.669 |
+| Transformer reactance on its rating | √(0.12² − 0.004²) = 0.1199333 | — |
+| Transformer, bus voltage base | (0.004 + j0.1199333) × 1.0929752 = **0.0043719 + j0.1310841 pu** | — |
+| Bus 2 Z | **0.0043719 + j0.1529436 pu**; \|Z\| = 0.1530061 | 0.0043719 + j0.1529436; 0.1530061 |
+| Bus 2 SCMVA | 100 ÷ 0.1530061 = **653.57 MVA** | 653.569 |
+| Bus 2, in ohms at 34.5 kV | generator 10.580 Ω × (34.5 ÷ 230)² = 0.23805 Ω; transformer (0.004 + j0.1199333) × 11.9025 = 0.04761 + j1.42751 Ω; total \|Z\| = 1.66624 Ω | — |
+| Bus 2 SCMVA from ohms | 33² ÷ 1.66624 = **653.57 MVA** | 653.569 |
+| Without the conversion (v0.4.0) | 100 ÷ \|0.004 + j0.1399333\| = 714.33 MVA, 9.3 % higher | — |
+
+Step-by-step working is in the V6 hand-calculation worksheet.
+
+**Outcome:** Match.
+
+### What this proves
+- The classical method converts transformer and generator impedances from the
+  equipment's rated voltage to the bus nominal voltage, and the result agrees with a
+  hand calculation in per unit and with an independent calculation in ohms.
+
+### What this does not prove
+- Off-nominal turns ratios and tap positions: these are not modeled (the nominal ratio
+  is used, as stated in the report notes and by `scr-screen check`).
+- Larger networks. There the classical method is compared with an independent
+  admittance-matrix calculation by automated tests (M1) and was compared during the
+  v0.5.0 review with reference values built from pandapower's branch data on public
+  test networks from 9 to 2,869 buses.
