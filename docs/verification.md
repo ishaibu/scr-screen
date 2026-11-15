@@ -19,6 +19,7 @@ real project.
 | V4 | 2026-11-06 | IEEE 39-bus, MVA basis (WSCR-MVA, CSCR-MVA, SCRIF), STATCOM in a group, generator outage at bus 38 | Hand calculation | Match |
 | V5 | 2026-11-07 | IEEE 39-bus, bus 12 Thévenin data sheet (R, X, X/R, ohms, fault current), intact and worst N-1 | Hand calculation from impedance matrix | Match |
 | V6 | 2026-11-14 | Two-bus network, transformer and generator rated voltages different from the bus voltages (voltage-base conversion) | Hand calculation, per unit and ohms | Match  |
+| V7 | 2026-11-15 | IEEE 39-bus, group G1 (buses 11 and 13): group N-1 WSCR and largest group total before a weak flag | Hand calculation from SCMVA (intact and with line 11 out, full rebuild) | Match |
 
 
 ---
@@ -418,3 +419,58 @@ Step-by-step working is in the V6 hand-calculation worksheet.
   admittance-matrix calculation by automated tests (M1) and was compared during the
   v0.5.0 review with reference values built from pandapower's branch data on public
   test networks from 9 to 2,869 buses.
+
+---
+
+## V7 — IEEE 39-bus, group G1: N-1 WSCR and largest group total before a weak flag
+
+**Date:** 2026-11-15
+**Checked by:** Shaibu Ibrahim, P.E.
+**Tool version:** 0.6.0
+**Case:** `scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_example.csv --n1`
+
+With the documented assumed short-circuit data used in V1 to V5. Group G1 is buses 11
+and 13, each with a 1,500 MW plant (total 3,000 MW); weak threshold 3.
+
+### Why this case
+v0.6.0 adds two group metrics: the group's WSCR under the worst single outage applied to
+the whole group at once (N-1 WSCR), and the largest group total before WSCR falls below
+the weak threshold, with the members' sizes kept in proportion.
+
+### Method
+- WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)². With equal sizes P: WSCR = (SCMVA₁₁ + SCMVA₁₃) ÷ (4P) = (SCMVA₁₁ + SCMVA₁₃) ÷ 6,000.
+- N-1 WSCR: the same with the SCMVA values under the outage the tool reports (line 11, between buses 6 and 11).
+  The SCMVA values under that outage are taken from a full rebuild of the network with the line removed
+  (script below), not from the tool's fast N-1 method.
+- Largest group total = WSCR × total ÷ weak threshold. Check: scaling both plants so the total equals this
+  value gives WSCR = 3.000.
+
+Script used (run in the repository folder): `v7_check.py`, which prints
+
+    line 11 connects 6 and 11
+    Intact:       Bus 11 6712.9 MVA, Bus 13 6470.2 MVA
+    Line 11 out:  Bus 11 4256.2 MVA, Bus 13 5273.7 MVA
+
+### Results
+
+| Check | Hand calculation | SCR-Screen |
+|---|---|---|
+| WSCR (intact) | (6,712.9 + 6,470.2) ÷ 6,000 = 13,183.1 ÷ 6,000 = **2.197** | 2.197 |
+| N-1 WSCR (line 11 out) | (4,256.2 + 5,273.7) ÷ 6,000 = 9,529.9 ÷ 6,000 = **1.588** | 1.588, line 11 (Bus 6–Bus 11) |
+| Largest group total (intact) | 2.1972 × 3,000 ÷ 3 = **2,197.2 MW** | 2,197.2 MW |
+| Largest group total (N-1) | 1.5883 × 3,000 ÷ 3 = **1,588.3 MW** | 1,588.3 MW |
+| Scaling check (intact) | 1,098.6 MW at each bus: 13,183.1 × 1,098.6 ÷ 2,197.2² = 13,183.1 ÷ 4,394.4 = **3.000** | — |
+
+Step-by-step working is in the V7 hand-calculation worksheet.
+
+**Outcome:** Match.
+
+### What this proves
+- The group N-1 WSCR and the largest group total are calculated correctly from the members'
+  short-circuit MVA, and the SCMVA under the reported outage agrees with a full rebuild of the network.
+
+### What this does not prove
+- That line 11 is the worst outage for this group. That is checked by an automated test that
+  compares the tool's result with a full rebuild of the network for every one of the 55 outages,
+  for four groups and 40 random choices of member sizes each (`tests/test_v060.py`).
+- The live recalculation in the browser, which was compared with Python results during development.

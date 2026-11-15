@@ -108,6 +108,44 @@ class N1Result:
     zth: dict[int, complex] = field(default_factory=dict)  # complex Z_ii (pu) in that worst case
 
 
+def _outage_list(zb: ZBus, label, generators: bool):
+    """Every single outage: (text, column a, column b or None for a source, element admittance)."""
+    outages = []
+    for name, a, b, y1 in zb.branches:
+        if a in zb.pos and b in zb.pos:
+            outages.append((f"{name} ({label(a)}–{label(b)})", zb.pos[a], zb.pos[b], y1))
+    if generators:
+        for name, k, y1 in zb.sources:
+            if k in zb.pos:
+                outages.append((f"{name} ({label(k)})", zb.pos[k], None, y1))
+    return outages
+
+
+def _outage_diagonals(zb: ZBus, cols: list[int], label, generators: bool):
+    """For each single outage, yield (text, new Z diagonal at `cols`), or (text, None) if it islands buses.
+
+    Removing an element with admittance y between nodes a and b (or from node k to ground)
+    changes Y by c·m·mᵀ with c = −y; the new impedance diagonal follows from Sherman–Morrison:
+    Z′_ii = Z_ii − c (Z m)_i² ÷ (1 + c mᵀ Z m).
+    """
+    z = zb.z
+    base_diag = np.array([z[c, c] for c in cols])
+    for text, pa, pb, y1 in _outage_list(zb, label, generators):
+        if pb is None:
+            zm = z[:, pa].copy()                 # Z m, with m = e_k (unit to ground)
+            mzm = zm[pa]
+        else:
+            zm = z[:, pa] - z[:, pb]             # Z m, with m = e_a - e_b
+            mzm = zm[pa] - zm[pb]                # m' Z m
+        c = -y1                                  # removing the element: Y' = Y + c m m'
+        denom = 1.0 + c * mzm
+        if abs(denom) < ISLAND_TOL * max(1.0, abs(c * mzm)):
+            yield text, None
+            continue
+        zm_sel = zm[cols]
+        yield text, base_diag - c * zm_sel * zm_sel / denom
+
+
 def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) -> N1Result:
     """Worst single-outage SCMVA for each bus in `buses` (Sherman-Morrison on the Z diagonal).
 
@@ -122,29 +160,11 @@ def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) ->
     cause = {b: "none" for b in buses}
     zth = {b: complex(d) for b, d in zip(buses, base_diag)}
     studied, skipped = 0, []
-    outages = []
-    for name, a, b, y1 in zb.branches:
-        if a in zb.pos and b in zb.pos:
-            outages.append((f"{name} ({label(a)}–{label(b)})", zb.pos[a], zb.pos[b], y1))
-    if generators:
-        for name, k, y1 in zb.sources:
-            if k in zb.pos:
-                outages.append((f"{name} ({label(k)})", zb.pos[k], None, y1))
-    for text, pa, pb, y1 in outages:
-        if pb is None:
-            zm = z[:, pa].copy()                 # Z m, with m = e_k (unit to ground)
-            mzm = zm[pa]
-        else:
-            zm = z[:, pa] - z[:, pb]             # Z m, with m = e_a - e_b
-            mzm = zm[pa] - zm[pb]                # m' Z m
-        c = -y1                                  # removing the element: Y' = Y + c m m'
-        denom = 1.0 + c * mzm
-        if abs(denom) < ISLAND_TOL * max(1.0, abs(c * mzm)):
+    for text, new_diag in _outage_diagonals(zb, cols, label, generators):
+        if new_diag is None:
             skipped.append(text)
             continue
         studied += 1
-        zm_sel = zm[cols]
-        new_diag = base_diag - c * zm_sel * zm_sel / denom
         for k, bus in enumerate(buses):
             d = abs(new_diag[k])
             if not np.isfinite(d) or d <= 0:
@@ -153,6 +173,55 @@ def n1_worst(zb: ZBus, buses: list[int], label=None, generators: bool = True) ->
             if s < worst[bus] - 1e-9:
                 worst[bus], cause[bus], zth[bus] = s, text, complex(new_diag[k])
     return N1Result(worst, cause, studied, skipped, zth)
+
+
+def group_n1_cases(zb: ZBus, buses: list[int], label=None, generators: bool = True) -> list[tuple[str, list[float]]]:
+    """Short-circuit MVA at every member of a group, intact and under each single outage.
+
+    Returns [(outage text, [SCMVA at each member])], starting with ("none", intact values),
+    keeping only the cases that can be the worst for SOME choice of plant sizes: a case is
+    dropped when another case is lower or equal at every member (so the minimum of
+    Σ SCMVA_i·P_i over the kept cases equals the minimum over all cases, for any sizes P ≥ 0).
+    Outages that island buses, or that leave a member with no valid impedance, are skipped,
+    as in n1_worst.
+    """
+    label = label or (lambda b: str(b))
+    cols = [_pos(zb, b) for b in buses]
+    z = zb.z
+    cases = [("none", [S_BASE_MVA / abs(z[c, c]) for c in cols])]
+    for text, new_diag in _outage_diagonals(zb, cols, label, generators):
+        if new_diag is None:
+            continue
+        d = np.abs(new_diag)
+        if not (np.all(np.isfinite(d)) and np.all(d > 0)):
+            continue
+        cases.append((text, [float(S_BASE_MVA / v) for v in d]))
+    return _pareto_low(cases)
+
+
+def _pareto_low(cases):
+    """Keep the cases not dominated from below (ties: the first one listed is kept)."""
+    arr = np.array([c[1] for c in cases], dtype=float)
+    order = np.argsort(arr.sum(axis=1), kind="stable")
+    kept: list[int] = []
+    for i in order:
+        row = arr[i]
+        if any(np.all(arr[k] <= row) for k in kept):
+            continue
+        kept.append(int(i))
+    kept.sort()
+    return [cases[i] for i in kept]
+
+
+def group_n1_wscr(cases: list[tuple[str, list[float]]], sizes: list[float]) -> tuple[float, str]:
+    """Lowest WSCR over the cases from group_n1_cases, and the outage giving it."""
+    tot = sum(sizes)
+    best = None
+    for text, s in cases:
+        v = sum(a * p for a, p in zip(s, sizes)) / (tot * tot)
+        if best is None or v < best[0] - 1e-12:
+            best = (v, text)
+    return best
 
 
 def suggest_groups(ifs: dict[tuple[int, int], float], buses: list[int], threshold: float) -> list[list[int]]:

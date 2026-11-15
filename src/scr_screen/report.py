@@ -112,6 +112,11 @@ animation:pop .45s ease-out both;transition:fill .3s}
 .mapctl{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;font-size:13px;margin:0 0 8px}
 .mapctl select{font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
 .gline.sub>span:first-child{color:var(--muted)}
+.gline .why{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.gline.host{flex-wrap:wrap;gap:2px 10px}.gline.host .val{font-weight:600}
+.g-size{font:inherit;font-size:13px;width:84px;padding:1px 5px;margin:0 4px 0 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg)}
+.g-size.bad{border-color:var(--vw)}
+.iftab{margin-top:8px;font-size:12.5px}.iftab th,.iftab td{padding:3px 6px}.iftab caption{caption-side:top;text-align:left;font-size:12.5px;color:var(--muted);padding:0 0 3px}
 .netmap .lbl{font-size:12px;font-weight:600;fill:var(--fg);paint-order:stroke;stroke:var(--bg);stroke-width:3px;animation:fade .5s ease 1s both}
 .cmp .track{background:transparent;border-bottom:1px solid var(--line);border-radius:0}
 .cmp .seg{position:absolute;top:10px;height:2px;background:var(--muted);transition:left .45s,width .45s}
@@ -169,7 +174,8 @@ function money(v){if(v===null) return '\u2014';var a=Math.abs(v);
   if(a>=1e3) return '$'+(v/1e3).toFixed(0)+'k'; return '$'+v.toFixed(0);}
 
 function update(){
-  var mw=S.mw;
+  var mw=S.mw, root=document.documentElement;
+  root.dataset.mw=mw; root.dataset.wk=S.wk; root.dataset.vw=S.vw;  // read by the dashboard
   qa('[data-mw-text]').forEach(function(e){e.textContent=num(mw);});
   qa('.th-vw').forEach(function(e){e.textContent=g(S.vw);});
   qa('.th-wk').forEach(function(e){e.textContent=g(S.wk);});
@@ -185,7 +191,10 @@ function update(){
   var SCRIF={};
   qa('.gbox[data-g]').forEach(function(b){
     var lines=qa('.gline.mem[data-scmva]',b), n=lines.length, sum=0, tot=0, mn=Infinity, P={};
-    lines.forEach(function(l){var s=+l.dataset.scmva, p=l.dataset.p?+l.dataset.p:mw, v=s/p;
+    var PL=[];
+    lines.forEach(function(l){var s=+l.dataset.scmva, inp=q('.g-size',l), p;
+      if(inp){inp.placeholder=g(mw); p=inp.dataset.v?+inp.dataset.v:mw;} else p=l.dataset.p?+l.dataset.p:mw;
+      var v=s/p; PL.push(p);
       P[l.dataset.pid]=p; sum+=s*p; tot+=p; mn=Math.min(mn,v);
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
     qa('.gline.scrif',b).forEach(function(l){var ifm=l.dataset.if?JSON.parse(l.dataset.if):null, v;
@@ -197,16 +206,26 @@ function update(){
       q('.val',l).textContent=f(v,2); pill(q('.pill',l),flag(v));});
     var w=sum/(tot*tot), c=flag(w), tl=q('.gline.total',b);
     q('.val',tl).textContent=f(w,2); pill(q('.pill',tl),c);
+    var n1w=null, gl=q('.gline.gn1',b);
+    if(b.dataset.gn1){var cs=JSON.parse(b.dataset.gn1), best=null;
+      cs.forEach(function(k){var x=0; k[1].forEach(function(a,i){x+=a*PL[i];}); x=x/(tot*tot);
+        if(best===null||x<best[0]-1e-12) best=[x,k[0]];});
+      n1w=best[0];
+      if(gl){q('.val',gl).textContent=f(n1w,2); pill(q('.pill',gl),flag(n1w)); q('.g-n1-out',gl).textContent=best[1]+' out';}}
+    var hs=q('.g-host',b); if(hs) hs.textContent=num1(w*tot/S.wk);
+    var hn=q('.g-host-n1',b); if(hn&&n1w!==null) hn.textContent=num1(n1w*tot/S.wk);
     var dn=q('.g-drop',b);
     if(dn){if(w<mn){dn.textContent='Screened together, strength is '+(100*(1-w/mn)).toFixed(0)+'% lower than the weakest plant alone.';dn.style.display='';}
       else{dn.textContent='';dn.style.display='none';}}
     var csl=q('.gline.cscr[data-cs]',b);
-    G[b.dataset.g]={w:w,c:c,n:n,tot:tot,cs:csl?+csl.dataset.cs/tot:null}; ng++; if(c!=='ok') gflag++;
+    G[b.dataset.g]={w:w,c:c,n:n,tot:tot,cs:csl?+csl.dataset.cs/tot:null,n1:n1w}; ng++; if(c!=='ok') gflag++;
     if(!glow||w<glow.w) glow={w:w,c:c,name:b.dataset.g};});
   qa('tr.gres').forEach(function(t){var d=G[t.dataset.g]; if(!d) return;
     var cc=q('.c-cscr',t); if(cc&&t.dataset.cs){var v=+t.dataset.cs/d.tot;cc.querySelector('.val').textContent=f(v,3);pill(q('.c-cscr .pill',t),flag(v));}
     q('.c-grating',t).textContent=(d.tot).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
-    q('.c-wscr',t).textContent=f(d.w,3); pill(q('.pill',t),d.c);});
+    q('.c-wscr',t).textContent=f(d.w,3); pill(q('.pill',t),d.c);
+    var cn=q('.c-gn1',t); if(cn&&d.n1!==null){q('.val',cn).textContent=f(d.n1,3);pill(q('.pill',cn),flag(d.n1));}
+    var cx=q('.c-gmax',t); if(cx) cx.textContent=num1(d.w*d.tot/S.wk);});
   var gv=q('#card-glow'); if(gv&&glow){gv.textContent=f(glow.w,2);gv.className='v '+glow.c;
     var gn=q('#card-glow-name'); if(gn) gn.textContent='Group '+glow.name;}
   var n1v=qa('tr.res[data-n1]').map(function(t){return +t.dataset.n1/mw;});
@@ -243,7 +262,7 @@ function update(){
     if(g.dataset.src==='1'){var s=big?15:12;sh.setAttribute('x',f(x-s/2,1));sh.setAttribute('y',f(y-s/2,1));
       sh.setAttribute('width',s);sh.setAttribute('height',s);} else {sh.setAttribute('r',big?9:6);}
     var h=q('.halo',g);
-    if(top){if(!h){h=document.createElementNS(SVG,'circle');h.setAttribute('cx',x);h.setAttribute('cy',y);
+    if(big){if(!h){h=document.createElementNS(SVG,'circle');h.setAttribute('cx',x);h.setAttribute('cy',y);
       h.setAttribute('r',9);g.insertBefore(h,g.firstChild);} h.setAttribute('class','halo '+c);}
     else if(h){g.removeChild(h);}
     q('title',g).textContent='Bus '+g.dataset.label+': '+(S.mapN1&&g.dataset.n1?'N-1 SCR ':'SCR ')+f(v,2)+' ('+WORD[c]+')'+(g.dataset.src==='1'?' \u00b7 generator/source bus':'');
@@ -260,11 +279,15 @@ function update(){
     if(ca!==cb){r.classList.add('diff');diff++;} else r.classList.remove('diff');});
   qa('.cmp-tick').forEach(function(t){t.style.left=(+t.dataset.th/cmx*100)+'%';});
   var dc=q('#cmp-diff'); if(dc) dc.textContent=diff;
-  var tl=qa('[data-tri]'), tc=[0,0,0,0];
+  var tl=qa('[data-tri]'), tc=[0,0,0,0], LP={};
   tl.forEach(function(t){var r=triEval(t,mw,SCRIF,G), c=TRI[r.L], p=q('.c-tri .pill',t);
+    if(t.dataset.pid) LP[t.dataset.pid]=r.L;
     if(p){p.className='pill '+c;p.textContent='Priority '+r.L;}
     var w=q('.c-why',t); if(w) w.textContent=r.why.length?r.why.join(' \u00b7 '):'No screening trigger found';
     if(t.classList.contains('trirow')) tc[r.L]++;});
+  qa('.gbox[data-g]').forEach(function(b){var gt=q('.gline.gtri .pill',b); if(!gt) return; var L=3;
+    qa('.gline.mem[data-pid]',b).forEach(function(l){if(LP[l.dataset.pid]) L=Math.min(L,LP[l.dataset.pid]);});
+    gt.className='pill '+TRI[L]; gt.textContent='Priority '+L;});
   var t1=q('#card-tri'); if(t1){t1.textContent=tc[1]+' / '+tc[2]+' / '+tc[3];t1.className='v '+(tc[1]?'vw':(tc[2]?'wk':'ok'));}
   if(C0) costUpdate(true);
 }
@@ -362,6 +385,12 @@ if(body){
   body.addEventListener('change',function(e){if(e.target.classList&&(e.target.classList.contains('e-dist')||e.target.classList.contains('e-poi'))) costUpdate(true);});
 }
 
+qa('.g-size').forEach(function(el){if(el.value!=='') el.dataset.v=el.value;
+  var key='gsize|'+el.closest('.gbox').dataset.g+'|'+el.closest('.gline').dataset.pid;
+  el.addEventListener('input',function(){var r=parse(el,true,false);
+    if(!r.ok){mark(el,key,'A plant size must be a number above 0 (or blank for the plant size above).');return;}
+    mark(el,key,''); if(r.v===null) delete el.dataset.v; else el.dataset.v=String(r.v); update();});});
+
 var ht=q('#heat-toggle'), nm=q('.netmap');
 if(ht&&nm) ht.addEventListener('change',function(){nm.classList.toggle('noheat',!ht.checked);});
 var mm=q('#map-mode');
@@ -378,6 +407,8 @@ if(reset) reset.addEventListener('click',function(){init();
   qa('#cost-body tr').forEach(function(t){t.dataset.dist=t.dataset.dist0;t.dataset.poi=t.dataset.poi0;
     var d=q('.e-dist',t),p=q('.e-poi',t); if(d){d.value=t.dataset.dist0;d.classList.remove('bad');}
     if(p){p.value=t.dataset.poi0;p.classList.remove('bad');}});
+  qa('.g-size').forEach(function(el){el.value=el.dataset.v0;el.classList.remove('bad');
+    if(el.dataset.v0!=='') el.dataset.v=el.dataset.v0; else delete el.dataset.v;});
   box.classList.remove('bad'); bad={}; showMsg(); update();});
 })();
 """
@@ -510,7 +541,7 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
                 f"<span><span class='sw' style='background:var(--ok)'></span>No flag: {TW} or above</span>"
                 "<span><span class='sw' style='background:var(--muted);border-radius:2px'></span>"
                 "Square = generator or grid source bus</span>"
-                "<span>Dashed line = transformer</span><span>Pulsing ring and label = weakest flagged buses (up to 8)</span>"
+                "<span>Dashed line = transformer</span><span>Pulsing ring = every flagged bus; labels = the weakest (up to 8)</span>"
                 "<span>Hover over a bus for details</span>"
                 "<span>Shading spreads each bus's flag color so weak areas stand out; strength is calculated "
                 "only at buses</span></div>"
@@ -634,9 +665,12 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
     parts.append("</tbody></table></div>")
     if result.groups:
         has_cscr = any(g.cscr is not None for g in result.groups)
+        has_gn1 = any(g.n1_wscr is not None for g in result.groups)
         parts.append("<div class='tablewrap' style='margin-top:14px'><table><thead><tr>"
                      f"<th>Group</th><th>Plants</th><th class='n'>Total rating ({basis})</th><th class='n'>WSCR</th>"
-                     "<th>Flag</th>" + ("<th class='n'>CSCR</th>" if has_cscr else "") + "</tr></thead><tbody>")
+                     "<th>Flag</th>" + ("<th class='n'>CSCR</th>" if has_cscr else "")
+                     + ("<th class='n'>N-1 WSCR</th>" if has_gn1 else "")
+                     + f"<th class='n'>Max total, no flag ({basis})</th></tr></thead><tbody>")
         for g in result.groups:
             cls, label = FLAG_STYLE[g.flag]
             gattr = f" class='gres' data-g='{escape(g.group)}'" if live else ""
@@ -645,9 +679,14 @@ def render_html(result: ScreeningResult, title: str = "SCR-Screen report",
             cs_cell = ""
             if has_cscr:
                 cs_cell = "<td class='n c-cscr'>" + (_val_pill(g.cscr, vw, wk, 3) if g.cscr is not None else "") + "</td>"
+            n1_cell = ""
+            if has_gn1:
+                n1_cell = "<td class='n c-gn1'>" + (_val_pill(g.n1_wscr, vw, wk, 3) if g.n1_wscr is not None else "") + "</td>"
+            mx = "" if g.max_total_no_flag is None else f"{g.max_total_no_flag:,.1f}"
             parts.append(f"<tr{gattr}><td>{escape(g.group)}</td><td>{escape(', '.join(g.plant_ids))}</td>"
                          f"<td class='n c-grating'>{g.total_rating:,.1f}</td><td class='n c-wscr'>{g.wscr:.3f}</td>"
-                         f"<td><span class='pill {cls}'>{label}</span></td>{cs_cell}</tr>")
+                         f"<td><span class='pill {cls}'>{label}</span></td>{cs_cell}{n1_cell}"
+                         f"<td class='n c-gmax'>{mx}</td></tr>")
         parts.append("</tbody></table></div>")
 
     # --- Method and assumptions ---------------------------------------------
@@ -728,37 +767,52 @@ def _comparison(shown, compare, interactive, vw, wk, mw0) -> str:
 def _groups_section(result, live, ext=None) -> str:
     """Plants screened together: each plant alone vs the group's WSCR.
 
-    In live (bus-scan) reports every member has the slider's plant size, so the
-    browser recalculates WSCR = sum(SCMVA_i * P) / (n * P)**2 as the size changes.
+    In live (bus-scan) reports every member has the slider's plant size unless the groups
+    file or the member's size box sets one, and the browser recalculates WSCR =
+    sum(SCMVA_i * P_i) / (sum P_i)**2, the group N-1 WSCR and the group's hosting capacity.
     """
     ext = ext or {}
     by_id = {p.plant_id: p for p in result.plants}
     network_aware = any(g.cscr is not None for g in result.groups)
+    vw, wk = _th(result)
+    unit = escape(str(ext.get("unit", result.basis))) if live else escape(result.basis)
+    tri = ext.get("tri") or {}
     out = ["<h2>Plants screened together (" + ("WSCR, CSCR and SCRIF" if network_aware else "WSCR") + ")</h2>"]
     if live:
         out.append("<div class='note' style='margin-top:-4px;margin-bottom:10px'>Each bus in a group "
-                   "gets a plant of the size above. WSCR = Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the "
+                   "gets a plant of the size above unless you enter its own size in the box. WSCR = "
+                   "Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)², assuming the "
                    "plants are fully interacting (electrically close); for buses far apart this is "
                    "conservative."
                    + (" CSCR ties the group's points of interconnection together; SCRIF uses the network's "
                       "interaction factors, so it sits between each plant's SCR and the WSCR. The group's flag "
                       "and the Flagged count use WSCR, the most conservative." if network_aware else "")
-                   + "</div>")
+                   + " The largest group total keeps the members' sizes in proportion: WSCR × total ÷ weak "
+                   "threshold.</div>")
     out.append("<div class='groups'>")
     for g in result.groups:
         cls, label = FLAG_STYLE[g.flag]
         gattr = f" data-g='{escape(g.group)}'" if live else ""
+        cases = ext.get("gn1", {}).get(g.group)
+        if live and cases:
+            gattr += f" data-gn1='{escape(json.dumps([[t, [float(f'{v:.17g}') for v in c]] for t, c in cases]))}'"
         out.append(f"<div class='gbox'{gattr}><h3>Group {escape(g.group)}</h3>")
         sized = g.member_ratings is not None
         for k, pid in enumerate(g.plant_ids):
             p = by_id[pid]
             rating = g.member_ratings[k] if sized else p.rating
             value = p.scmva / rating
-            pc, pl = FLAG_STYLE[_flag_word(value, *_th(result))]
+            pc, pl = FLAG_STYLE[_flag_word(value, vw, wk)]
             fixed = sized and abs(rating - p.rating) > 1e-9
             attr = (f" data-scmva='{p.scmva:.17g}' data-pid='{escape(pid)}'"
                     + (f" data-p='{rating:.17g}'" if fixed else "")) if live else ""
-            size_txt = f" ({rating:,.0f} {escape(result.basis)})" if fixed else ""
+            if live:
+                v0 = f"{rating:g}" if fixed else ""
+                size_txt = (f"<input class='g-size' type='number' min='0' step='any' inputmode='decimal' "
+                            f"value='{v0}' data-v0='{v0}' placeholder='{float(ext.get('plant_mw', rating)):g}' "
+                            f"aria-label='Plant size at {escape(pid)} ({unit})'>{unit}")
+            else:
+                size_txt = f" ({rating:,.0f} {escape(result.basis)})" if fixed else ""
             out.append(f"<div class='gline mem'{attr}><span>{escape(pid)} alone{size_txt}</span>"
                        f"<span><span class='val'>{value:.2f}</span>"
                        f"<span class='pill {pc}'>{pl}</span></span></div>")
@@ -769,7 +823,7 @@ def _groups_section(result, live, ext=None) -> str:
             a = (f" data-cs='{ext['cscmva'][g.group]:.17g}' data-n='{len(g.plant_ids)}'"
                  if live and g.group in ext.get("cscmva", {}) else "")
             out.append(f"<div class='gline sub cscr'{a}><span>Together, POIs tied (CSCR)</span>"
-                       f"<span>{_val_pill(g.cscr, *_th(result))}</span></div>")
+                       f"<span>{_val_pill(g.cscr, vw, wk)}</span></div>")
         for k, pid in enumerate(g.plant_ids):
             p = by_id[pid]
             scrif_v = g.member_scrif[k] if g.member_scrif is not None else p.scrif
@@ -779,7 +833,31 @@ def _groups_section(result, live, ext=None) -> str:
                  f" data-if='{escape(json.dumps(ext['ifm'][pid]))}'"
                  if live and pid in ext.get("ifsum", {}) and pid in ext.get("ifm", {}) else "")
             out.append(f"<div class='gline sub scrif'{a}><span>{escape(pid)} with interaction (SCRIF)</span>"
-                       f"<span>{_val_pill(scrif_v, *_th(result))}</span></div>")
+                       f"<span>{_val_pill(scrif_v, vw, wk)}</span></div>")
+        if g.n1_wscr is not None:
+            out.append(f"<div class='gline sub gn1'><span>Together, worst single outage (N-1 WSCR)"
+                       f"<span class='why g-n1-out'>{escape(g.n1_outage or 'none')} out</span></span>"
+                       f"<span>{_val_pill(g.n1_wscr, vw, wk)}</span></div>")
+        if g.max_total_no_flag is not None:
+            n1t = (f" · <span class='val g-host-n1'>{g.n1_max_total_no_flag:,.1f}</span> {unit} N-1"
+                   if g.n1_max_total_no_flag is not None else "")
+            out.append(f"<div class='gline sub host'><span>Largest group total before a weak flag</span>"
+                       f"<span><span class='val g-host'>{g.max_total_no_flag:,.1f}</span> {unit} intact{n1t}</span></div>")
+        levels = [tri[pid]["L"] for pid in g.plant_ids if pid in tri]
+        if levels:
+            lv = min(levels)
+            out.append(f"<div class='gline sub gtri'><span>EMT study priority (worst member)</span>"
+                       f"<span><span class='pill {_TRI_CLS[lv]}'>Priority {lv}</span></span></div>")
+        if g.interaction:
+            ids_ = g.plant_ids
+            head = "".join(f"<th class='n'>{escape(q)}</th>" for q in ids_)
+            body = "".join(
+                f"<tr><th>{escape(r)}</th>" + "".join(
+                    "<td class='n'>—</td>" if r == q else f"<td class='n'>{g.interaction[r].get(q, 0.0):.2f}</td>"
+                    for q in ids_) + "</tr>" for r in ids_)
+            out.append("<div class='tablewrap'><table class='iftab'><caption>Interaction factors IF = |Z<sub>row,col</sub> ÷ "
+                       "Z<sub>col,col</sub>|: 1.00 means fully interacting (the WSCR assumption), near 0 independent"
+                       f"</caption><thead><tr><th></th>{head}</tr></thead><tbody>{body}</tbody></table></div>")
         drop = 100 * (1 - g.wscr / g.min_individual_scr)
         text = (f"Screened together, strength is {drop:.0f}% lower than the weakest plant alone."
                 if g.wscr < g.min_individual_scr else "")

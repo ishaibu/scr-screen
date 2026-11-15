@@ -392,7 +392,8 @@ def _resize_groups(result, sizes, rating, thresholds):
         ss = [scm[pid] for pid in g.plant_ids]
         value = wscr(ss, ps)
         out.append(replace(g, total_rating=sum(ps), wscr=value, flag=classify(value, thresholds).value,
-                           min_individual_scr=min(s / p for s, p in zip(ss, ps)), member_ratings=ps))
+                           min_individual_scr=min(s / p for s, p in zip(ss, ps)), member_ratings=ps,
+                           max_total_no_flag=value * sum(ps) / thresholds.weak_below))
     result.groups = out
     return result
 
@@ -437,9 +438,10 @@ def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
     from dataclasses import replace
 
     from .classical import build_zbus
-    from .strength import capacitor_mvar, composite_scmva, interaction_matrix, interaction_sums, n1_worst
+    from .strength import (capacitor_mvar, composite_scmva, group_n1_cases, group_n1_wscr, interaction_matrix,
+                           interaction_sums, n1_worst)
 
-    extra = {"ifsum": {}, "ifm": {}, "cscmva": {}, "n1": {}, "n1_outage": {}, "qc": {}}
+    extra = {"ifsum": {}, "ifm": {}, "cscmva": {}, "n1": {}, "n1_outage": {}, "qc": {}, "gn1": {}}
     sizes = sizes or {}
     notes: list[str] = []
     caps = {b: q for b, q in capacitor_mvar(net).items() if b in ids}
@@ -478,8 +480,19 @@ def _network_strength(args, net, rows, ids, result, rating=None, sizes=None):
                 extra["ifsum"][pid] = sums[b]
                 extra["ifm"][pid] = {qid: ifs[(b, j)] for qid, j in zip(g.plant_ids, buses) if j != b}
             cs = composite_scmva(zb, buses)
-            group_upd[g.group] = {"cscr": cs / sum(size.values()), "member_scrif": member_scrif}
+            group_upd[g.group] = {"cscr": cs / sum(size.values()), "member_scrif": member_scrif,
+                                  "interaction": {pid: dict(extra["ifm"][pid]) for pid in g.plant_ids}}
             extra["cscmva"][g.group] = cs
+            if args.n1:
+                cases = group_n1_cases(zb, buses, label=lambda b: ids.get(b, f"Bus {b}"))
+                ps = [size[b] for b in buses]
+                value, text = group_n1_wscr(cases, ps)
+                group_upd[g.group].update(n1_wscr=value, n1_outage=text,
+                                          n1_max_total_no_flag=value * sum(ps) / result.thresholds["weak_below"])
+                extra["gn1"][g.group] = cases
+        if args.n1:
+            notes.append("Group N-1 WSCR: the lowest WSCR when each single outage (the same outages as the N-1 "
+                         "screen) is applied to all members of the group at once, with the members' sizes.")
         notes.append("SCRIF_i = SCMVA_i ÷ (P_i + Σ IF_ij·P_j), with interaction factors IF_ij = |Z_ij ÷ Z_jj| "
                      "from the classical network impedance matrix (NERC Reliability Guideline, 2017). "
                      f"CSCR = short-circuit MVA with the group's POIs tied together ÷ total {unit}; NERC's "
@@ -965,6 +978,13 @@ def _print_summary(result: ScreeningResult) -> None:
     for g in result.groups:
         extra = f"; CSCR {g.cscr:.3f}" if g.cscr is not None else ""
         print(f"Group {g.group}: WSCR {g.wscr:.3f} ({g.flag}){extra}; plants {', '.join(g.plant_ids)}")
+        if g.n1_wscr is not None:
+            print(f"  N-1 WSCR {g.n1_wscr:.3f} with {g.n1_outage} out")
+        if g.max_total_no_flag is not None:
+            unit = result.basis
+            n1t = (f"; N-1: {g.n1_max_total_no_flag:,.1f} {unit}" if g.n1_max_total_no_flag is not None else "")
+            print(f"  Largest group total before a weak flag (sizes in proportion): "
+                  f"{g.max_total_no_flag:,.1f} {unit}{n1t}")
         scrifs = ([f"{pid} {v:.3f}" for pid, v in zip(g.plant_ids, g.member_scrif)]
                   if g.member_scrif is not None else [])
         if scrifs:

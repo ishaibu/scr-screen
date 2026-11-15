@@ -158,7 +158,9 @@ def test_scan_fixed_size_plant_member(tmp_path):
     assert g["G2"]["wscr"] == pytest.approx((s16 * 300 + s17 * 1500) / 1800 ** 2)
     assert g["G2"]["min_individual_scr"] == pytest.approx(min(s16 / 300, s17 / 1500))
     html = (tmp_path / "r.html").read_text(encoding="utf-8")
-    assert "Bus 16 alone (300 MW)" in html and "data-p='300'" in html and "data-if='" in html
+    # v0.6.0: in live reports the member's size is an editable box holding the file's size
+    assert "Bus 16 alone<input class='g-size'" in html and "value='300' data-v0='300'" in html
+    assert "data-p='300'" in html and "data-if='" in html
 
 
 # --- generator outages and --gen-out ----------------------------------------------------------

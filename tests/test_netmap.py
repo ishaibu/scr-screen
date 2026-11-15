@@ -136,11 +136,14 @@ def test_heat_map_can_be_turned_off_and_n1_is_carried():
     assert "scr-heat-blur" in on and on.count("data-n1=") == 8   # 4 markers + 4 heat circles
 
 
-def test_labels_and_rings_limited_to_weakest_eight():
+def test_labels_limited_to_weakest_eight_every_flagged_bus_pulses():
+    """v0.6.0: every flagged bus pulses (before: only the 8 labeled ones)."""
     from scr_screen.netmap import MAX_LABELS
     net = pp.from_json(str(__import__("pathlib").Path(__file__).resolve().parents[1]
                            / "examples" / "ieee39_assumed.json"))
-    svg, _ = render_network_svg(net, results_for(net, mw=3000))
+    res = results_for(net, mw=3000)
+    svg, _ = render_network_svg(net, res)
     assert svg.count("class='lbl'") == MAX_LABELS == 8
-    assert svg.count("class='halo") == 8
+    n_flagged = sum(f in ("weak", "very weak") for _, f in res.values())
+    assert n_flagged > 8 and svg.count("class='halo") == n_flagged
     assert "Bus 12 · 0.94" in svg            # the weakest bus is always labeled

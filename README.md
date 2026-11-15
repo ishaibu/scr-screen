@@ -52,11 +52,12 @@ The SCR formula is simple. Getting a trustworthy answer is not:
 | Bus scan | SCR at every bus of a network for a hypothetical plant size |
 | Flags | Very weak / weak / no flag, with user-configurable thresholds |
 | Network map | Grid drawn from bus coordinates (or an automatic layout), colored by SCR flag, with heat-map shading so weak areas stand out, and an N-1 view. The IEEE 39-bus example uses the commonly published one-line arrangement |
-| Plant-size slider | In scan reports, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
+| Plant-size slider | In scan reports and dashboards, drag to any plant size; every SCR, flag, chart and the map update instantly in the browser |
 | Max plant size | Largest plant each location can host before a weak flag (SCMVA ÷ weak threshold) |
 | Method comparison | Classical vs IEC 60909 for every bus, highlighting where the flag changes |
 | Cost screening | Ranks candidate buses by screening-level cost: synchronous condenser to fix weak grid, gen-tie line, POI substation (all costs are your inputs) |
 | Your own network | Reads pandapower JSON, Excel (.xlsx), and MATPOWER (.m/.mat); `check` lists anything missing before you scan |
+| Group strength | For each group: WSCR, CSCR, SCRIF, N-1 WSCR, the largest group total before a weak flag and the interaction factors between members; member sizes can be changed in the browser |
 | Dashboard | `scan --dashboard` writes the scan as a one-screen dashboard: a sidebar of views (overview, map, rankings, charts, groups, N-1, EMT triage, cost, method comparison, assumptions), the weakest locations beside the map, and the details of any bus you click, including its Thévenin impedance and fault current. Same numbers and live inputs as the report; one HTML file that works offline |
 | Outputs | Self-contained HTML report and dashboard (work offline), CSV, JSON |
 | Interfaces | Command line (`scr-screen`) and Python API |
@@ -177,14 +178,32 @@ scr-screen scan ieee39_assumed.json --plant-mw 1500 --groups ieee39_groups_examp
   alt="SCR-Screen dashboard for the IEEE 39-bus example: a sidebar of views, the plant-size and threshold inputs, summary cards, the network map, the weakest locations and the details of the selected bus"></a>
 </p>
 
-- **Views in a sidebar**, each with a count of what needs attention: Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions. A view appears only when the scan has that content.
-- **Inputs that stay in place:** plant size and the weak and very-weak thresholds; the cost inputs are in the Cost screening view. Everything recalculates as in the report.
-- **Overview:** the network map beside the weakest locations (lowest SCR in any condition shown). Click a bus on the map, in the list or in the rankings for its details: SCR intact and under the worst single outage, short-circuit MVA, fault current, largest size before a weak flag, the Thévenin impedance (R + jX in ohms, X/R) intact and N-1, the worst outage, and why it has its EMT priority.
-- **Rankings:** search by bus or group, show flagged buses only, and sort by any column.
-- **Map colored by** SCR (intact), N-1 SCR, or EMT study priority.
+- **Views**, each with a count of what needs attention: Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions. A view appears only when the scan has that content. On a computer they are in a sidebar; on a tablet or phone they are in a row along the top, with an **All** button that lists every view.
+- **Inputs that stay in place:** plant size and the weak and very-weak thresholds; the cost inputs are in the Cost screening view. On a phone the inputs fold into one line (tap **Edit** to change them) and the summary cards become a row you can swipe. Everything recalculates as in the report.
+- **Overview:** the network map beside the weakest locations (lowest SCR in any condition shown). Click a bus on the map, in the list, in the chart or in the rankings for its details: SCR intact and under the worst single outage, short-circuit MVA, fault current, largest size before a weak flag, the Thévenin impedance (R + jX in ohms, X/R) intact and N-1, the worst outage, and why it has its EMT priority.
+- **Network map** fits the screen; zoom with +, − and Fit, by pinching, or by scrolling (Ctrl + scroll on the Overview), and drag to move. Color it by SCR (intact), N-1 SCR, or EMT study priority. Every flagged bus pulses; the weakest are labeled.
+- **Charts:** one chart per bus with the SCR intact (bar), the SCR under the worst single outage (◆) and the largest plant before a weak flag, ordered weakest first or by any of these.
+- **Groups:** each member's size can be changed in its box; the panel shows WSCR, CSCR, SCRIF, the group's N-1 WSCR, the largest group total before a weak flag, the worst member's EMT priority and the interaction factors between members (see [Groups](#groups-of-nearby-plants)).
+- **Rankings:** search by bus or group, show flagged buses only, and sort by any column; table headings stay in view while you scroll.
 - **Print / PDF** prints every view in report order; **Download CSV** saves the results table as shown (current plant size and thresholds).
 
-The dashboard is the report's content rearranged: it uses the report's own calculation script, so the two always show the same numbers. With the classical method, `--dashboard` also turns on `--n1` and `--emt-triage` so that every view is available (results files written with `--out` then include the N-1 and EMT columns). `--report` is unchanged and can be used together with `--dashboard`. One HTML file, no internet access needed.
+The dashboard is the report's content rearranged: it uses the report's own calculation script, so the two always show the same numbers. With the classical method, `--dashboard` also turns on `--n1` and `--emt-triage` so that every view is available (results files written with `--out` then include the N-1 and EMT columns). `--report` can be used together with `--dashboard`. One HTML file, no internet access needed.
+
+## Groups of nearby plants
+
+Plants close together share the grid's strength, so screen them together: list them in a groups file (`bus,group`, optionally with each member's `mw` and `mva`) and add `--groups`. For each group the report and dashboard show:
+
+| Metric | What it tells you |
+|---|---|
+| WSCR | The group's strength, assuming the plants fully interact (conservative): Σ(SCMVAᵢ × Pᵢ) ÷ (ΣPᵢ)² |
+| CSCR | With the group's points of interconnection tied together |
+| SCRIF | Each member's SCR allowing for how strongly the network couples it to the others |
+| N-1 WSCR (with `--n1`) | The lowest WSCR when each single outage is applied to the whole group at once, and the outage that gives it |
+| Largest group total before a weak flag | WSCR × total ÷ weak threshold: how far the group's total can grow (members' sizes kept in proportion) before WSCR falls below the weak threshold; intact and N-1 |
+| EMT study priority (worst member) | With `--emt-triage` |
+| Interaction factors | IFᵢⱼ = \|Zᵢⱼ ÷ Zⱼⱼ\| between members: 1.00 means fully interacting (the WSCR assumption), near 0 independent |
+
+In the report and dashboard you can type a different size for any member; everything recalculates. `scr-screen interactions` suggests groups from the interaction factors.
 
 ## EMT study triage
 
@@ -235,6 +254,7 @@ SCR-Screen works on any network, not just the IEEE 39-bus example.
 **Short-circuit data needed:**
 - Grid sources (`ext_grid`): `s_sc_max_mva` and `rx_max`.
 - Synchronous generators (`gen`): `xdss_pu` (X''d on machine base) and `sn_mva`. IEC 60909 also needs `vn_kv`, `rdss_ohm`, and `cos_phi`.
+- Transformers (`trafo`) use pandapower's IEC names: `vk_percent` is the short-circuit impedance in percent of rated voltage, the nameplate **%Z** in ANSI terms, and `vkr_percent` is its resistive part, **%R** = load (copper) losses in kW ÷ rating in kVA × 100. The reactance is √(vk² − vkr²), the nameplate **%X**. Both are on the transformer's own rating (`sn_mva`) and rated voltages (`vn_hv_kv`, `vn_lv_kv`).
 
 **Workflow:**
 
@@ -321,6 +341,8 @@ See [`examples/walkthrough.ipynb`](examples/walkthrough.ipynb) for a step-by-ste
 **CSCR** = short-circuit MVA with the group's POIs tied together ÷ ΣP (NERC ties the plants' medium-voltage buses, which are not in a transmission model, and divides by nominal MVA: use `--basis MVA` to match)
 **ESCR** = (SCMVA − capacitive shunt Mvar at the bus) ÷ plant rating
 **N-1**: each line circuit, transformer unit and synchronous generator unit is removed in turn; outages that would leave buses with no source are skipped and listed
+**Group N-1 WSCR** = the lowest WSCR when each of the same single outages is applied to all members of a group at once
+**Largest group total before a weak flag** = WSCR × ΣP ÷ weak threshold (the members' sizes kept in proportion; with the N-1 WSCR for the N-1 value)
 **Thévenin impedance** at a POI: Z_th = Zᵢᵢ (pu on 100 MVA); in ohms, Z_th × kV² ÷ 100; X/R = X ÷ R; fault current I_sc = SCMVA ÷ (√3 × kV) kA, at 1.0 pu pre-fault voltage with IBRs excluded
 
 P is the plant rating on the chosen basis: MW (default) or MVA.
@@ -376,6 +398,7 @@ Every formula is covered by automated tests with hand-calculated expected values
 - **v0.3.1** (November 2026): MVA basis in network scans (NERC's WSCR-MVA and MVA-based CSCR), STATCOMs and other 0 MW devices, per-member group sizes, generator outages in N-1, minimum-generation case (`--gen-out`), MW/MVA switch in SCR-Screen Lite.
 - **v0.4.0** (November 2026): EMT study triage: a system strength data sheet per POI (Thévenin R, X, X/R, intact, N-1 and minimum generation) and a priority based on the situations in NERC's 2024 EMT guideline (`triage`, `scan --emt-triage`).
 - **v0.5.0** (November 2026): dashboard (`scan --dashboard`): the scan as a one-screen application with views, bus details and Thévenin data; transformer and generator impedances converted to the bus voltage base; verification V6.
+- **v0.6.0** (November 2026): group N-1 WSCR, group hosting capacity, interaction factors and editable member sizes; dashboard map that fits the screen with zoom and pan, one chart with intact and N-1 SCR, phone and tablet layout with an All-views menu; every flagged bus pulses.
 
 **Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
 

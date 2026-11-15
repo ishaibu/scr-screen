@@ -3,8 +3,8 @@
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | Current through v0.5.0 |
-| Last updated | 2026-11-14 |
+| Status | Current through v0.6.0 |
+| Last updated | 2026-11-15 |
 | License | MIT |
 
 ---
@@ -204,14 +204,14 @@ Plant size; weak and very-weak thresholds; and, with cost screening, target SCR,
    - method comparison (classical vs IEC 60909)
    - largest-plant chart
    - cost screening table
-   - WSCR group comparison (direct mode, and network scans with `--groups`; placed after the SCR chart)
+   - WSCR group comparison (direct mode, and network scans with `--groups`; placed after the SCR chart); network scans add CSCR, SCRIF, group N-1 WSCR (with `--n1`), the largest group total before a weak flag, the worst member's EMT priority and the interaction factors, with an editable size per member (v0.6)
    - EMT study triage (scan with `--emt-triage`)
    - results tables
    - method and assumptions, and the disclaimer
 2. **Results CSV/JSON** (`--out`), including the largest plant before a weak flag.
 3. **Cost CSV** (`--cost-out`).
 4. **Console summary.**
-5. **Dashboard** (`scan --dashboard`, v0.5): the scan report's content as a single self-contained file with a sidebar of views (Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions), inputs that stay in place, the weakest locations, and the details of a selected bus (including Thévenin R, X, \|Z\| in ohms, X/R and fault current, intact and worst N-1). Search, flagged-only filter and sorting in the rankings; map colored by SCR, N-1 SCR or EMT priority; print (all views) and CSV download of the values shown.
+5. **Dashboard** (`scan --dashboard`, v0.5): the scan report's content as a single self-contained file with a sidebar of views (Overview, Network map, Rankings, Charts, Groups, N-1 outages, EMT study triage, Cost screening, Method comparison, Method & assumptions), inputs that stay in place, the weakest locations, and the details of a selected bus (including Thévenin R, X, \|Z\| in ohms, X/R and fault current, intact and worst N-1). Search, flagged-only filter and sorting in the rankings; map colored by SCR, N-1 SCR or EMT priority; print (all views) and CSV download of the values shown. From v0.6: map fitted to the screen with zoom and pan; one chart with intact and N-1 SCR and the largest size; on tablets and phones the views in a top row with an "All" list, and on phones folded inputs and a swipeable row of summary cards.
 6. **EMT triage report** (`triage --report`): printable HTML with a summary and one data sheet per POI; `triage --out` writes CSV (one row per POI and condition) or JSON.
 
 ---
@@ -251,7 +251,7 @@ Design rules:
 - Each short-circuit method is a separate module behind one switch (`network.scmva(method=...)`).
 - Unsupported network elements stop the calculation with a clear error rather than being silently ignored.
 - The report's browser code reproduces the Python formulas exactly; its results are checked against the Python results (T11).
-- The dashboard contains no calculation: it is built from the report's HTML and runs the report's script unchanged, so the two cannot disagree (T12).
+- The dashboard contains no calculation of results: it is built from the report's HTML and runs the report's script unchanged, so the two cannot disagree (T12). Its chart and lists read the values the report's script has written (v0.6: the merged chart divides each bus's SCMVA by the current plant size, the same formula, and rounds the same way).
 
 ---
 
@@ -276,6 +276,8 @@ Every case must be **independently verified by the author (Shai)** before its te
 | T10 | Largest plant | T3b POI, weak threshold 3 | 485.86 / 3 = **161.95 MW** | ☑ |
 | T11 | Report recalculation | IEEE 39-bus scan report, inputs changed in the browser | Matches Python results (e.g., 800 MW: lowest SCR 3.54, 0 flagged) | ☐ |
 | T12 | Dashboard equals report | IEEE 39-bus scan with groups, N-1, EMT triage and cost; inputs changed in the browser in both files | Every card, table row, group panel, cost row and map node identical at each setting | ☐ |
+| T14 | Group N-1 WSCR (V7) | IEEE 39-bus, group G1 (buses 11, 13) at 1,500 MW each, with --n1 | Equal to the minimum over a full rebuild of the network for every outage, for any member sizes (automated); 1.588 with line 11 out | ☐ |
+| T15 | Group hosting capacity (V7) | Same group | Scaling every member by (largest total ÷ total) gives WSCR equal to the weak threshold: 2,197.2 MW intact, 1,588.3 MW N-1 | ☐ |
 | T13 | Voltage-base conversion (V6) | 220 kV / 33 kV buses; source 1000 MVA, X″d 0.20, rated 230 kV; transformer 100 MVA, 230/34.5 kV, vk 12 %, vkr 0.4 % | 4,574.67 MVA at bus 1; 653.57 MVA at bus 2 | ☐ |
 
 T11 and T12 are checked by running the report's code in a simulated browser during development; they are not part of the automated test suite (T12's structure, that nothing in the report is missing from the dashboard and the script is unchanged, is tested automatically).
@@ -301,7 +303,7 @@ T11 and T12 are checked by running the report's code in a simulated browser duri
 | D8 | Condenser defaults | X″d = 0.20, Xt = 0.10 pu (typical), labeled and adjustable |
 | D9 | Target SCR | Defaults to the weak threshold and follows it in the report until set explicitly |
 | D10 | Site file scope | When given, only listed buses are costed |
-| D11 | Map readability | Map omitted above 400 buses; labels and pulsing rings limited to the 8 weakest flagged buses |
+| D11 | Map readability | Map omitted above 400 buses; labels limited to the 8 weakest flagged buses. Since v0.6, every flagged bus pulses (before: only the 8 labeled ones) |
 | D12 | Number format | Numbers with commas rejected rather than guessed |
 | D13 | Network-aware metrics | SCRIF, CSCR and N-1 from the classical Z-bus only; refused or omitted (with a note) when IEC 60909 is the primary method |
 | D14 | Group flag | Group flag and Flagged count stay on WSCR (most conservative); SCRIF and CSCR shown alongside |
@@ -321,6 +323,10 @@ T11 and T12 are checked by running the report's code in a simulated browser duri
 | D28 | Nominal ratio (v0.5) | Taps and off-nominal turns ratios stay unmodeled (flat-start convention); the report and `check` state how many transformers this affects and that the effect can reach several percent at adjacent buses |
 | D29 | Negative reactance (v0.5) | A line with negative series reactance is still listed as possible series compensation, but answering `series_compensation = no` in the POI information file removes that trigger (reduced models contain negative-reactance equivalent branches) |
 | D30 | Dashboard (v0.5) | A separate output (`scan --dashboard`); `--report` is unchanged. Layout only: built from the report and running its script. With the classical method it turns on `--n1` and `--emt-triage` so every view is present |
+| D32 | Group N-1 WSCR (v0.6) | Each single outage applied to all members at once, minimum over outages. For live recalculation the report carries only the outages not dominated at every member (exact for any sizes ≥ 0). It does not change the EMT triage, which uses the intact group WSCR and CSCR as before |
+| D33 | Group hosting capacity (v0.6) | Defined with the members' sizes kept in proportion, so WSCR scales as 1 ÷ total and the largest total is WSCR × total ÷ weak threshold. This is a screening quantity, not an allocation between members |
+| D34 | Pulsing (v0.6) | Every flagged bus pulses so no weak location is missed; labels stay limited to 8 for readability; `prefers-reduced-motion` turns animation off |
+| D35 | Dashboard on small screens (v0.6) | Views in a top row with an always-visible "All" button (a list of every view) rather than a sideways-scrolling row alone, which users may not discover |
 | D31 | Report data precision (v0.5) | Values embedded in the report for live recalculation carry full double precision (17 significant digits), so the browser and Python round identically |
 
 ---

@@ -13,7 +13,7 @@ import math
 from html import escape
 
 MAX_MAP_BUSES = 400  # above this, a full map becomes unreadable
-MAX_LABELS = 8  # label and pulse only the weakest flagged buses, to keep the map readable
+MAX_LABELS = 8  # label only the weakest flagged buses, to keep the map readable (every flagged bus pulses)
 
 FLAG_CLASS = {"very weak": "vw", "weak": "wk", "none": "ok"}
 
@@ -108,7 +108,7 @@ def render_network_svg(net, results: dict[int, tuple[float, str]],
             data += f" data-scmva='{scmva[b]:.17g}'"
         if b in n1:
             data += f" data-n1='{n1[b]:.17g}'"
-        halo = (f"<circle cx='{x:.1f}' cy='{y:.1f}' r='9' class='halo {cls}'/>" if b in highlight else "")
+        halo = (f"<circle cx='{x:.1f}' cy='{y:.1f}' r='9' class='halo {cls}'/>" if big else "")
         if src:
             s_ = 15 if big else 12
             shape = (f"<rect x='{x - s_ / 2:.1f}' y='{y - s_ / 2:.1f}' width='{s_}' height='{s_}' "

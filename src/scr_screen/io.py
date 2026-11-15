@@ -198,6 +198,10 @@ def write_results_json(result: ScreeningResult, path: str | Path, triage: dict |
 def write_results_csv(result: ScreeningResult, path: str | Path, triage: dict | None = None) -> Path:
     """Write one row per plant and one row per group, for spreadsheets.
 
+    Group rows: ratio = WSCR; max_*_no_flag = largest group total before a weak flag (members'
+    sizes kept in proportion); n1_ratio / n1_outage = group N-1 WSCR (scan --n1); emt_priority =
+    the worst member's priority (scan --emt-triage).
+
     With ``triage`` (scan --emt-triage), two columns are added: emt_priority and emt_triggers.
     """
     path = Path(path)
@@ -219,10 +223,13 @@ def write_results_csv(result: ScreeningResult, path: str | Path, triage: dict | 
                                                                     for x in triage[p.plant_id]["triggers"])]
                           if triage and p.plant_id in triage else ([""] * len(tcols))))
         for g in result.groups:
+            levels = [triage[pid]["level"] for pid in g.plant_ids if triage and pid in triage]
             w.writerow(["group (WSCR)", g.group, g.group, "; ".join(g.plant_ids), "",
-                        f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag, "",
-                        result.source, result.tool_version, result.run_utc, "", "", "", "", _f3(g.cscr)]
-                       + [""] * len(tcols))
+                        f"{g.total_rating:.2f}", f"{g.wscr:.3f}", g.flag,
+                        "" if g.max_total_no_flag is None else f"{g.max_total_no_flag:.1f}",
+                        result.source, result.tool_version, result.run_utc, "", "", _f3(g.n1_wscr),
+                        g.n1_outage or "", _f3(g.cscr)]
+                       + ([min(levels), "worst member priority"] if levels else [""] * len(tcols)))
     return path
 
 

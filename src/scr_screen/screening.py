@@ -43,6 +43,13 @@ class GroupResult:
     cscr: float | None = None        # composite SCR at the group's POIs tied together
     member_ratings: list[float] | None = None  # each member's rating, when the groups file sets sizes
     member_scrif: list[float] | None = None    # each member's SCRIF (network scans, classical method)
+    # Largest group total (same basis, members' sizes kept in proportion) before WSCR falls below
+    # the weak threshold: WSCR × total ÷ weak threshold (v0.6).
+    max_total_no_flag: float | None = None
+    n1_wscr: float | None = None               # lowest WSCR under any single outage (scan --n1, classical)
+    n1_outage: str | None = None               # the outage giving it ("none" if no outage lowers it)
+    n1_max_total_no_flag: float | None = None  # as max_total_no_flag, with the N-1 WSCR
+    interaction: dict | None = None            # {member: {other member: IF}}, IF = |Z_ij ÷ Z_jj| (classical)
 
 
 @dataclass
@@ -120,5 +127,6 @@ def screen(
             wscr=value,
             flag=classify(value, thresholds).value,
             min_individual_scr=min(plant_scr(m, basis) for m in members),
+            max_total_no_flag=value * sum(m.rating(basis) for m in members) / thresholds.weak_below,
         ))
     return result

@@ -3,6 +3,31 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-15
+
+Group strength metrics, and a dashboard that fits every screen.
+
+### Added
+- **Group N-1 WSCR** (`scan --groups --n1`, classical method): the lowest WSCR when each single outage (the same line, transformer and generator outages as the N-1 screen) is applied to all members of a group at once, with the outage that gives it. The browser recalculates it exactly as sizes change: the report carries every outage that can be the worst for some choice of sizes (an outage that is at least as strong at every member as another is left out, which cannot change the result).
+- **Largest group total before a weak flag** (group hosting capacity): WSCR × total ÷ weak threshold, keeping the members' sizes in proportion; intact and, with `--n1`, N-1. In the report, the dashboard, the console summary, and the results files (CSV column `max_<basis>_no_flag` on group rows; JSON `max_total_no_flag`, `n1_max_total_no_flag`).
+- **Interaction factors** between the members of each group (classical method), as a table in the group panel and in the JSON results (`interaction`).
+- **EMT study priority of each group** (the worst member's), with `--emt-triage`; also in the CSV `emt_priority` column of group rows.
+- **Member sizes can be changed in the browser:** each group member has a size box (blank = the plant size above); WSCR, CSCR, SCRIF, N-1 WSCR, the largest total, the flags and the EMT triage recalculate. Reset all restores the sizes from the groups file.
+- CSV group rows now also fill `n1_ratio` (group N-1 WSCR) and `n1_outage`.
+
+### Changed
+- **Dashboard layout:**
+  - the network map fits the screen; zoom with +, − and Fit, pinch, or scroll (Ctrl + scroll on the Overview), and drag to move; labels keep a readable size at any zoom; the Network map view shows the selected bus beside the map;
+  - the two charts ("SCR by bus" and "Largest plant before a weak flag") are one chart: SCR intact (bar), SCR under the worst single outage (◆) and the largest plant before a weak flag, ordered weakest first or by SCR, N-1 SCR, size or bus number; the first 20 buses are shown, with "Show all";
+  - tablets and phones: the views are in a row along the top with an **All** button that lists every view with its count, plus Print / PDF and Download CSV;
+  - phones: the inputs fold into one line (tap Edit), and the summary cards become a row you can swipe;
+  - outside the Overview the summary cards are compact; on computers, table headings stay in view while the table scrolls;
+  - when a network is too large to draw (above 400 buses), the Network map view is not listed.
+- **Every flagged bus pulses** on the map (report and dashboard). Before, only the 8 weakest flagged buses pulsed; labels are still limited to the 8 weakest. In the dashboard's EMT priority coloring, priorities 1 and 2 pulse.
+- Group panels in live reports show each member's size as an editable box instead of text.
+- README: the transformer data `vk_percent` and `vkr_percent` are explained in ANSI terms (%Z and %R).
+- Every existing number is unchanged from v0.5.0.
+
 ## [0.5.0] - 2026-11-14
 
 A dashboard for network scans, and accuracy fixes found in a review of the calculations.
