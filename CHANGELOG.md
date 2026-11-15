@@ -3,6 +3,11 @@
 All notable changes to SCR-Screen are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-11-15
+
+### Fixed
+- **Dashboard chart:** the very-weak and weak threshold lines are colored (red and amber) and labeled with their values above the chart, as in the report's charts. In v0.6.0 both lines were the same gray with no values. The legend reads "Very weak below 2" and "Weak below 3" and follows the threshold boxes. No calculation changed.
+
 ## [0.6.0] - 2026-11-15
 
 Group strength metrics, and a dashboard that fits every screen.

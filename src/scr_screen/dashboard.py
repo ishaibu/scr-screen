@@ -143,7 +143,14 @@ body:not(.v-overview) .kpis .card .sub{display:none}
 .mbar.vw{background:var(--vw)}.mbar.wk{background:var(--wk)}.mbar.ok{background:var(--ok)}
 .mdia{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;transform:rotate(45deg);border:2px solid var(--fg);background:var(--bg);transition:left .4s ease}
 .mdia.vw{border-color:var(--vw)}.mdia.wk{border-color:var(--wk)}.mdia.ok{border-color:var(--ok)}
-.mtick{position:absolute;top:-3px;bottom:-3px;border-left:2px dashed var(--muted);opacity:.7}
+.mtick{position:absolute;top:-4px;bottom:-4px;border-left:2px dashed var(--muted);opacity:.85;z-index:1}
+.mtick.vw{border-left-color:var(--vw)}.mtick.wk{border-left-color:var(--wk)}
+.maxis{position:relative;height:38px}
+.maxis .at{position:absolute;bottom:0;transform:translateX(-50%);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;text-align:center;white-space:nowrap}
+.maxis .at:after{content:'';display:block;margin:2px auto 0;width:0;height:5px;border-left:2px dashed currentColor}
+.maxis .at.vw{color:var(--vw)}.maxis .at.wk{color:var(--wk)}
+.maxis .cap{position:absolute;left:0;top:0;line-height:1.2;white-space:nowrap;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.mc-legend .lt.vw{border-left-color:var(--vw)}.mc-legend .lt.wk{border-left-color:var(--wk)}
 .mchart .pill{margin-left:4px}
 .mc-more{margin-top:10px}
 /* rankings tools */
@@ -214,7 +221,7 @@ font:inherit;font-size:14px;text-align:left;padding:9px 12px;border:0;border-rad
 .mchart{grid-template-columns:minmax(52px,auto) minmax(70px,1fr) auto auto;gap:6px 8px;font-size:12.5px}
 .mchart .mx{display:none}
 .g-size{width:66px}
-.mc-legend span:nth-child(4){display:none}
+.mc-legend span:nth-child(5){display:none}
 .mchart .pill{display:none}
 .zhint{display:none}
 }
@@ -464,11 +471,15 @@ function chart(R,all){
   var mx=Math.max.apply(null,d.map(function(x){return Math.max(x.v,x.n||0);}).concat([s.wk*1.5]));
   var show=(all||mcAll||d.length<=MC_TOP+5)?d:d.slice(0,MC_TOP);
   var pc=function(v){return (Math.max(v,0)/mx*100).toFixed(2)+'%';};
-  var h="<div class='hd'>Bus</div><div class='hd'>SCR (bar: intact"+(hasN1?"; ◆ N-1":"")+")</div><div class='hd n'>SCR</div>"+(hasN1?"<div class='hd n'>N-1</div>":"")+"<div class='hd n mx'>Max, no flag</div>";
+  var fmt=function(v){return String(+(+v).toPrecision(6));};
+  var axis="<div class='maxis'><span class='cap'>SCR (bar: intact"+(hasN1?"; ◆ N-1":"")+")</span>"+
+    "<span class='at vw' style='left:"+pc(s.vw)+"' title='Very weak below "+fmt(s.vw)+"'>"+fmt(s.vw)+"</span>"+
+    "<span class='at wk' style='left:"+pc(s.wk)+"' title='Weak below "+fmt(s.wk)+"'>"+fmt(s.wk)+"</span></div>";
+  var h="<div class='hd'>Bus</div>"+axis+"<div class='hd n'>SCR</div>"+(hasN1?"<div class='hd n'>N-1</div>":"")+"<div class='hd n mx'>Max, no flag</div>";
   show.forEach(function(x){var c=flagOf(x.v,s), cn=x.n===null?'':flagOf(x.n,s);
     h+="<div class='nm' tabindex='0' role='button' data-pid='"+esc(x.pid)+"' title='"+esc(x.pid)+": details'>"+esc(x.pid)+"</div>"+
       "<div class='mtrack'><div class='mbar "+c+"' style='width:"+pc(x.v)+"'></div>"+
-      "<div class='mtick' style='left:"+pc(s.vw)+"'></div><div class='mtick' style='left:"+pc(s.wk)+"'></div>"+
+      "<div class='mtick vw' style='left:"+pc(s.vw)+"'></div><div class='mtick wk' style='left:"+pc(s.wk)+"'></div>"+
       (x.n===null?"":"<div class='mdia "+cn+"' style='left:"+pc(x.n)+"' title='N-1 SCR "+x.n.toFixed(2)+"'></div>")+"</div>"+
       "<div class='n'>"+x.v.toFixed(2)+"<span class='pill "+c+"'>"+NAME[c]+"</span></div>"+
       (hasN1?"<div class='n'>"+(x.n===null?'':x.n.toFixed(2))+"</div>":"")+
@@ -477,6 +488,7 @@ function chart(R,all){
   MC.innerHTML=h;
   if(mcMore){mcMore.hidden=d.length<=MC_TOP+5; mcMore.textContent=mcAll?'Show the first '+MC_TOP:'Show all '+d.length+' buses';}
   var ttl=q('#mc-title'); if(ttl) ttl.textContent=fx(s.mw,s.mw%1?1:0);
+  qa('.mc-vw').forEach(function(e){e.textContent=fmt(s.vw);}); qa('.mc-wk').forEach(function(e){e.textContent=fmt(s.wk);});
 }
 if(mcSort) mcSort.addEventListener('change',function(){chart(rows());});
 if(mcMore) mcMore.addEventListener('click',function(){mcAll=!mcAll; chart(rows());});
@@ -597,7 +609,8 @@ def render_dashboard(report_html: str, data: dict | None = None) -> str:
               "<option value='bus'>Bus number</option></select></label></div>"
               "<div class='mc-legend'><span><i class='lb'></i>SCR, network intact</span>"
               "<span><i class='ld'></i>SCR under the worst single outage (N-1)</span>"
-              "<span><i class='lt'></i>Very-weak and weak thresholds</span>"
+              "<span><i class='lt vw'></i>Very weak below <b class='mc-vw'></b></span>"
+              "<span><i class='lt wk'></i>Weak below <b class='mc-wk'></b></span>"
               "<span>Max, no flag: the largest plant before a weak flag (SCMVA \u00f7 weak threshold)</span></div>"
               "<div class='mchart' id='mchart'></div>"
               "<button type='button' class='dbtn mc-more' id='mc-more' hidden></button></div>")

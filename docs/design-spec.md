@@ -3,7 +3,7 @@
 | Item | Value |
 |---|---|
 | Author | Shaibu Ibrahim, P.E. |
-| Status | Current through v0.6.0 |
+| Status | Current through v0.6.1 |
 | Last updated | 2026-11-15 |
 | License | MIT |
 

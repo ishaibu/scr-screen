@@ -195,3 +195,10 @@ def test_dashboard_report_and_results_agree(tmp_path):
     for row in re.findall(r"<tr class='res'[^>]*>", r):
         assert row in d
     assert scr_screen.__version__ in d
+
+
+def test_chart_threshold_lines_are_colored_and_labeled():
+    from scr_screen.dashboard import DASH_CSS, DASH_SCRIPT
+    assert "<div class='mtick vw'" in DASH_SCRIPT and "<div class='mtick wk'" in DASH_SCRIPT
+    assert "<span class='at vw'" in DASH_SCRIPT and "<span class='at wk'" in DASH_SCRIPT
+    assert ".mtick.vw{border-left-color:var(--vw)}" in DASH_CSS and ".maxis .at.wk{color:var(--wk)}" in DASH_CSS

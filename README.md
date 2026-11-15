@@ -399,6 +399,7 @@ Every formula is covered by automated tests with hand-calculated expected values
 - **v0.4.0** (November 2026): EMT study triage: a system strength data sheet per POI (Thévenin R, X, X/R, intact, N-1 and minimum generation) and a priority based on the situations in NERC's 2024 EMT guideline (`triage`, `scan --emt-triage`).
 - **v0.5.0** (November 2026): dashboard (`scan --dashboard`): the scan as a one-screen application with views, bus details and Thévenin data; transformer and generator impedances converted to the bus voltage base; verification V6.
 - **v0.6.0** (November 2026): group N-1 WSCR, group hosting capacity, interaction factors and editable member sizes; dashboard map that fits the screen with zoom and pan, one chart with intact and N-1 SCR, phone and tablet layout with an All-views menu; every flagged bus pulses.
+- **v0.6.1** (November 2026): dashboard chart threshold lines colored and labeled with their values.
 
 **Planned** (priorities may change with user feedback; suggest yours in [Issues](https://github.com/ishaibu/scr-screen/issues))
 
